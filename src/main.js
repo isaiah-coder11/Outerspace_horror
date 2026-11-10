@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { AudioEngine } from './audio.js';
-import { createWorld, createSleepPod, WALKABLE, LAYOUT, roomAt } from './world.js';
+import { createWorld, createSleepPod, createEscapePod, WALKABLE, LAYOUT, roomAt } from './world.js';
 import {
   buildTask,
   TASK_POOL,
@@ -23,6 +23,17 @@ const $ = (selector) => document.querySelector(selector);
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 const wait = (ms) => new Promise((resolve) => window.setTimeout(resolve, ms));
 const pick = (list) => list[Math.floor(Math.random() * list.length)];
+
+// The way off the ship. 20 reserves, split so every bay contributes,
+// and the clamps only release on a sound hull.
+const ESCAPE_COST = { power: 7, biomass: 7, data: 6 };
+const ESCAPE_TOTAL = Object.values(ESCAPE_COST).reduce((sum, value) => sum + value, 0);
+
+const ESCAPE_LINES = [
+  'The pod punches clear of the hull. Erebus-9 shrinks to a light, then nothing.',
+  'The clamps let go. The ship falls away behind you, still breathing.',
+  'Acceleration presses you into the seat. Whatever was walking the corridors stays with the ship.',
+];
 
 const FLAVOUR_LINES = [
   'Something moved at the end of the corridor.',
@@ -249,6 +260,7 @@ const state = {
   standRoom: null,
   standCooldown: 0,
   escape: null,
+  podBuilt: false,
   cracks: [],
   patches: [],
   shake: 0,
@@ -341,6 +353,15 @@ registerInteractable(sleepPod, {
   room: 'hub',
   label: 'Enter cryo pod — end shift',
   onInteract: openEndModal,
+});
+
+// the escape pod waits in the south bay; assembling it is the way out
+const escapePod = createEscapePod();
+escapePod.group.position.set(0, 0, 28);
+const escapeHandle = registerInteractable(escapePod.group, {
+  room: 'escape',
+  label: `Build escape pod — ${ESCAPE_TOTAL} reserves`,
+  onInteract: useEscapePod,
 });
 
 // one meal per day grows in the east bay
@@ -699,6 +720,119 @@ function lockedResource(key) {
 }
 
 // ─────────────────────────────────────────────────────────────
+// escape pod
+//
+// The south bay holds the only way off Erebus-9. Assembling the pod
+// costs 20 reserves (7 power, 7 biomass, 6 data), and the clamps will
+// not release while maintenance is unfinished or a crack is open.
+// ─────────────────────────────────────────────────────────────
+
+function podSealBlocker() {
+  if (state.cracks.length) {
+    const open = crackDamage();
+    log(`ESCAPE POD REFUSED — HULL CRACK OPEN (${open}%). WELD IT SHUT FIRST.`, 'bad');
+    audio.deny();
+    world.flicker(1.6);
+    state.shake = Math.max(state.shake, 0.22);
+    return true;
+  }
+
+  if (state.completedCount < 3) {
+    log(
+      `ESCAPE POD REFUSED — MAINTENANCE INCOMPLETE (${state.completedCount}/3). THE CLAMPS WILL NOT RELEASE ON A FAILING SHIP.`,
+      'bad',
+    );
+    audio.deny();
+    world.flicker(1.4);
+    return true;
+  }
+
+  return false;
+}
+
+function podShortfall() {
+  return Object.entries(ESCAPE_COST)
+    .filter(([key, amount]) => Math.floor(state.resources[key] ?? 0) < amount)
+    .map(([key, amount]) => `${RESOURCE_META[key].short} ${Math.floor(state.resources[key] ?? 0)}/${amount}`);
+}
+
+function refreshEscapePod() {
+  escapePod.setBuilt(state.podBuilt);
+  escapeHandle.label = state.podBuilt
+    ? 'Launch escape pod — leave EREBUS-9'
+    : `Build escape pod — ${ESCAPE_TOTAL} reserves`;
+
+  const entry = waypointEls.get('escape');
+  if (entry) entry.nameEl.textContent = state.podBuilt ? 'ESCAPE POD' : 'ESCAPE BAY';
+}
+
+function buildEscapePod() {
+  if (state.podBuilt) return;
+  if (podSealBlocker()) return;
+
+  const missing = podShortfall();
+  if (missing.length) {
+    log(
+      `ESCAPE POD UNBUILT — NEEDS ${ESCAPE_TOTAL} RESERVES (7 PWR · 7 BIO · 6 DATA). MISSING: ${missing.join(' · ')}.`,
+      'bad',
+    );
+    audio.deny();
+    return;
+  }
+
+  Object.entries(ESCAPE_COST).forEach(([key, amount]) => {
+    state.resources[key] = Math.max(0, (state.resources[key] ?? 0) - amount);
+  });
+  setResourcesUI();
+
+  state.podBuilt = true;
+  refreshEscapePod();
+  saveProgress();
+  audio.success();
+  world.flicker(2.2);
+  log('ESCAPE POD ASSEMBLED — 20 RESERVES SPENT. PRESS E AGAIN TO LAUNCH.', 'good');
+}
+
+async function launchEscapePod() {
+  if (!state.podBuilt || state.phase === 'over') return;
+  if (podSealBlocker()) return;
+
+  state.phase = 'over';
+  state.runId += 1;
+  state.huntActive = false;
+  state.uiBlocking = 'gameover';
+  state.escape = null;
+  clearSave();
+  setHovered(null);
+  world.setHunterActive(false);
+  world.hideLurker();
+  world.hideGhost();
+  audio.success();
+
+  scareFlash.classList.remove('flash', 'final');
+  void scareFlash.offsetWidth;
+  scareFlash.classList.add('flash');
+
+  await wait(900);
+
+  goEyebrow.textContent = 'ESCAPE POD · CYCLE COMPLETE';
+  goTitle.innerHTML = 'YOU LEFT<br />EREBUS-9';
+  goLine.textContent = pick(ESCAPE_LINES);
+  goStats.textContent = `SHIFTS SURVIVED: ${Math.max(0, state.day - 1)}`;
+  gameOverScreen.classList.remove('hidden');
+  if (document.pointerLockElement) document.exitPointerLock();
+  audio.powerDown();
+}
+
+function useEscapePod() {
+  if (state.podBuilt) {
+    launchEscapePod();
+    return;
+  }
+  buildEscapePod();
+}
+
+// ─────────────────────────────────────────────────────────────
 // hull cracks
 //
 // From day 5 the hull opens a crack on a wall or the floor. It is always
@@ -1022,7 +1156,7 @@ function onTaskComplete(task) {
   refreshTasks();
 
   if (state.completedCount === 3) {
-    log('All compartments stable. The cryo pod is waiting.', 'warn');
+    log('All compartments stable. The escape pod bay is south of the hub.', 'warn');
     audio.beep(1040, 0.4, 'sine', 0.028);
   }
 }
@@ -1160,6 +1294,7 @@ function saveProgress() {
     harvestedToday: state.harvestedToday,
     cracks: state.cracks.map((crack) => ({ ...crack })),
     patches: [...state.patches],
+    podBuilt: !!state.podBuilt,
     lastPicks: { ...state.lastPicks },
     tasks: {
       reactor: reactor.snapshot(),
@@ -1233,6 +1368,8 @@ function resumeGame() {
   world.hideLurker();
 
   resetCracks();
+  state.podBuilt = !!save.podBuilt;
+  refreshEscapePod();
   if (Array.isArray(save.cracks)) {
     save.cracks.forEach((entry) => {
       const slot = Number(entry && entry.slot);
@@ -1526,6 +1663,8 @@ function restart() {
   struggleEl.classList.add('hidden');
   world.hideLurker();
   resetCracks();
+  state.podBuilt = false;
+  refreshEscapePod();
   state.lastPicks = {};
   setLife(100);
   respawnPlayer();
@@ -1565,6 +1704,8 @@ function startGame() {
   struggleEl.classList.add('hidden');
   world.hideLurker();
   resetCracks();
+  state.podBuilt = false;
+  refreshEscapePod();
   state.lastPicks = {};
   state.tasks = {};
   state.completedCount = 0;
@@ -1574,7 +1715,8 @@ function startGame() {
 
   log('Shift log: EREBUS-9 adrift. Crew manifest empty.', 'ghostly');
   log('Restore three compartments. Harvest food in Hydro Bay. Sleep in the pod.', 'warn');
-  log('Reactor north, Hydro Bay east, Nav west. The shift clock is running.', 'ghostly');
+  log('Reactor north, Hydro Bay east, Nav west. Escape bay south.', 'ghostly');
+  log('Assembling the escape pod costs 20 reserves — but not until the hull is sound.', 'warn');
 
   requestLock();
   window.setTimeout(() => {
@@ -1994,16 +2136,20 @@ const HUNT_WAYPOINTS = {
   hydro: { x: 26, z: 0 },
   w: { x: -13, z: 0 },
   nav: { x: -26, z: 0 },
+  s: { x: 0, z: 13 },
+  escape: { x: 0, z: 26 },
 };
 
 const HUNT_EDGES = {
-  hub: ['n', 'e', 'w'],
+  hub: ['n', 'e', 'w', 's'],
   n: ['hub', 'reactor'],
   reactor: ['n'],
   e: ['hub', 'hydro'],
   hydro: ['e'],
   w: ['hub', 'nav'],
   nav: ['w'],
+  s: ['hub', 'escape'],
+  escape: ['s'],
 };
 
 // 100-80: quiet. 80-50: it comes out of the doorways. 50-20: it stands
@@ -2019,6 +2165,8 @@ function huntNodeForRoom(roomId) {
   if (roomId === 'reactor') return 'reactor';
   if (roomId === 'med') return 'hydro';
   if (roomId === 'nav') return 'nav';
+  if (roomId === 'escape') return 'escape';
+  if (roomId === 'corridorS') return 's';
   return 'hub';
 }
 
@@ -2424,6 +2572,10 @@ function buildWaypoints() {
   });
 
   waypointEls.set('pod', createWaypointEntry('pod', 'CRYO POD', '#7fe4ff'));
+  waypointEls.set(
+    'escape',
+    createWaypointEntry('pod', state.podBuilt ? 'ESCAPE POD' : 'ESCAPE BAY', '#a8e6ff'),
+  );
 }
 
 function drawWaypoint(entry, target, cameraPos, width, height, isPod) {
@@ -2560,6 +2712,22 @@ function updateWaypoints(dt) {
         entry.el.classList.add('next');
         drawWaypoint(entry, target, cameraPos, width, height, false);
       });
+    }
+  }
+
+  // The escape bay is always marked: it is the way off the ship.
+  if (currentRoom !== 'escape') {
+    const podEntry = waypointEls.get('escape');
+    if (podEntry) {
+      podEntry.el.classList.add('next');
+      drawWaypoint(
+        podEntry,
+        { x: 0, y: 2.4, z: 26.4, label: state.podBuilt ? 'ESCAPE POD' : 'ESCAPE BAY' },
+        cameraPos,
+        width,
+        height,
+        true,
+      );
     }
   }
 

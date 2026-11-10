@@ -14,6 +14,8 @@ export const LAYOUT = {
   med: { minX: 19, maxX: 33, minZ: -8, maxZ: 8, label: 'HYDRO BAY', accent: 0x59f0b0 },
   corridorW: { minX: -19, maxX: -7, minZ: -2.5, maxZ: 2.5, label: 'CORRIDOR WEST', accent: 0x3f8499 },
   nav: { minX: -33, maxX: -19, minZ: -8, maxZ: 8, label: 'NAV / COMMS', accent: 0x6f93ff },
+  corridorS: { minX: -2.5, maxX: 2.5, minZ: 7, maxZ: 19, label: 'CORRIDOR SOUTH', accent: 0x3f8499 },
+  escape: { minX: -9, maxX: 9, minZ: 19, maxZ: 33, label: 'ESCAPE BAY', accent: 0xa8e6ff },
 };
 
 // Collision uses the room boxes plus corridors pushed one metre into
@@ -21,7 +23,7 @@ export const LAYOUT = {
 // an overlap at the seams and doorway thresholds stay passable.
 const COLLISION_OVERLAP = 1.0;
 export const WALKABLE = Object.entries(LAYOUT).map(([key, rect]) => {
-  if (key === 'corridorN') {
+  if (key === 'corridorN' || key === 'corridorS') {
     return { ...rect, minZ: rect.minZ - COLLISION_OVERLAP, maxZ: rect.maxZ + COLLISION_OVERLAP };
   }
   if (key === 'corridorE' || key === 'corridorW') {
@@ -854,7 +856,8 @@ export function createWorld(scene) {
   // hub
   addWallZ(-7, -7, -2.5, 0x63d7ff);
   addWallZ(-7, 2.5, 7, 0x63d7ff);
-  addWallZ(7, -7, 7, 0x63d7ff);
+  addWallZ(7, -7, -2.5, 0x63d7ff);
+  addWallZ(7, 2.5, 7, 0x63d7ff);
   addWallX(-7, -7, -2.5, 0x63d7ff);
   addWallX(-7, 2.5, 7, 0x63d7ff);
   addWallX(7, -7, -2.5, 0x63d7ff);
@@ -893,6 +896,15 @@ export function createWorld(scene) {
   addWallX(-19, -8, -2.5, 0x6f93ff);
   addWallX(-19, 2.5, 8, 0x6f93ff);
 
+  // south corridor + escape bay
+  addWallX(-2.5, 7, 19, 0x3f8499);
+  addWallX(2.5, 7, 19, 0x3f8499);
+  addWallX(-9, 19, 33, 0xa8e6ff);
+  addWallX(9, 19, 33, 0xa8e6ff);
+  addWallZ(33, -9, 9, 0xa8e6ff);
+  addWallZ(19, -9, -2.5, 0xa8e6ff);
+  addWallZ(19, 2.5, 9, 0xa8e6ff);
+
   // ── hazard thresholds ─────────────────────────────────────
   [
     [0, -7, 5, 1],
@@ -916,6 +928,8 @@ export function createWorld(scene) {
   const DOORWAYS = [
     { x: 0, z: -7, axis: 'z' },
     { x: 0, z: -19, axis: 'z' },
+    { x: 0, z: 7, axis: 'z' },
+    { x: 0, z: 19, axis: 'z' },
     { x: 7, z: 0, axis: 'x' },
     { x: 19, z: 0, axis: 'x' },
     { x: -7, z: 0, axis: 'x' },
@@ -973,6 +987,9 @@ export function createWorld(scene) {
   addFixture(0, -26, 0xff6a32, 46, 24, 'z');
   addFixture(26, -1.4, 0x7dffc4, 30, 20, 'x');
   addFixture(-26, -0.6, 0x8fa9ff, 30, 20, 'x');
+  addFixture(0, 13, 0x7dc6ee, 16, 13, 'z');
+  addFixture(0, 22.4, 0x9fe4ff, 30, 20, 'x');
+  addFixture(0, 31.6, 0x9fe4ff, 26, 18, 'x');
 
   // ── reactor core ──────────────────────────────────────────
   const reactor = new THREE.Group();
@@ -2005,4 +2022,137 @@ export function createSleepPod() {
   group.userData.halo = halo;
   group.userData.beam = beam;
   return group;
+}
+
+// ─────────────────────────────────────────────────────────────
+// escape pod (interactive; the way off the ship)
+// ─────────────────────────────────────────────────────────────
+
+export function createEscapePod() {
+  const group = new THREE.Group();
+
+  const cradleMat = new THREE.MeshStandardMaterial({ color: 0x2a333d, metalness: 0.82, roughness: 0.42 });
+  const hullMat = new THREE.MeshStandardMaterial({ color: 0x6b7884, metalness: 0.35, roughness: 0.85 });
+  const darkMat = new THREE.MeshStandardMaterial({ color: 0x141b22, metalness: 0.7, roughness: 0.55 });
+  const litMat = new THREE.MeshStandardMaterial({
+    color: 0x0b1a20,
+    emissive: 0x66d9ff,
+    emissiveIntensity: 0.18,
+    roughness: 0.4,
+  });
+
+  // launch cradle the pod sits in
+  const cradle = new THREE.Mesh(new THREE.CylinderGeometry(2.15, 2.35, 0.3, 28), cradleMat);
+  cradle.position.y = 0.15;
+  group.add(cradle);
+
+  [[-1.55, -1.55], [1.55, -1.55], [-1.55, 1.55], [1.55, 1.55]].forEach(([x, z]) => {
+    const clamp = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.7, 0.28), cradleMat);
+    clamp.position.set(x * 0.9, 0.62, z * 0.9);
+    clamp.rotation.y = -Math.atan2(z, x);
+    group.add(clamp);
+  });
+
+  // scaffolding, torn down once the pod is assembled
+  const scaffold = new THREE.Group();
+  [[-1.7, -1.1], [1.7, -1.1], [-1.7, 1.1], [1.7, 1.1]].forEach(([x, z]) => {
+    const post = new THREE.Mesh(new THREE.BoxGeometry(0.16, 3.2, 0.16), cradleMat);
+    post.position.set(x, 1.6, z);
+    scaffold.add(post);
+  });
+  [-1.1, 1.1].forEach((z) => {
+    const beam = new THREE.Mesh(new THREE.BoxGeometry(3.5, 0.14, 0.14), cradleMat);
+    beam.position.set(0, 3.1, z);
+    scaffold.add(beam);
+  });
+  group.add(scaffold);
+
+  // hull, nose and window band
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(1.15, 1.3, 2.5, 24, 1), hullMat);
+  body.position.y = 1.6;
+  group.add(body);
+
+  const nose = new THREE.Mesh(new THREE.ConeGeometry(1.15, 1.15, 24), hullMat);
+  nose.position.y = 3.42;
+  group.add(nose);
+
+  const collar = new THREE.Mesh(new THREE.CylinderGeometry(1.32, 1.32, 0.16, 24), darkMat);
+  collar.position.y = 2.86;
+  group.add(collar);
+
+  const windowBand = new THREE.Mesh(new THREE.CylinderGeometry(1.17, 1.17, 0.42, 24, 1, true), litMat);
+  windowBand.position.y = 2.2;
+  group.add(windowBand);
+
+  // engine bells
+  [[-0.55, 0], [0.55, 0], [0, 0.7]].forEach(([x, z]) => {
+    const bell = new THREE.Mesh(new THREE.ConeGeometry(0.34, 0.62, 14, 1, true), darkMat);
+    bell.position.set(x, 0.42, z * 0.6);
+    bell.rotation.x = Math.PI;
+    group.add(bell);
+  });
+
+  // status lamps around the cradle: amber while unbuilt, green once ready
+  const lamps = [];
+  for (let i = 0; i < 6; i += 1) {
+    const angle = (i / 6) * Math.PI * 2;
+    const material = new THREE.MeshStandardMaterial({
+      color: 0x0a1014,
+      emissive: 0xff7a45,
+      emissiveIntensity: 0.55,
+      roughness: 0.5,
+    });
+    const lamp = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.06, 0.1), material);
+    lamp.position.set(Math.cos(angle) * 2.05, 0.31, Math.sin(angle) * 2.05);
+    lamp.rotation.y = -angle;
+    lamps.push(material);
+    group.add(lamp);
+  }
+
+  // build console in front of the cradle
+  const consoleGroup = new THREE.Group();
+  const pedestal = new THREE.Mesh(new THREE.BoxGeometry(0.8, 1.0, 0.5), cradleMat);
+  pedestal.position.y = 0.5;
+  consoleGroup.add(pedestal);
+
+  const screen = new THREE.Mesh(
+    new THREE.PlaneGeometry(0.66, 0.42),
+    new THREE.MeshBasicMaterial({ color: 0x8fe6ff, transparent: true, opacity: 0.5 }),
+  );
+  screen.position.set(0, 1.02, -0.26);
+  screen.rotation.x = -0.5;
+  consoleGroup.add(screen);
+  consoleGroup.position.set(0, 0, -2.6);
+  group.add(consoleGroup);
+
+  let built = false;
+
+  function setBuilt(value) {
+    built = !!value;
+    scaffold.visible = !built;
+    hullMat.color.set(built ? 0x8b9aa6 : 0x5f6d78);
+    hullMat.roughness = built ? 0.7 : 0.85;
+    litMat.emissiveIntensity = built ? 1.4 : 0.18;
+    nose.visible = built;
+    windowBand.visible = built;
+    screen.material.color.set(built ? 0x8bffc8 : 0x8fe6ff);
+    lamps.forEach((material) => {
+      material.emissive.set(built ? 0x66ffb2 : 0xff7a45);
+      material.emissiveIntensity = built ? 1.5 : 0.55;
+    });
+    body.scale.setScalar(built ? 1 : 0.86);
+  }
+
+  setBuilt(false);
+
+  return {
+    group,
+    setBuilt,
+    isBuilt: () => built,
+    update(time) {
+      litMat.emissiveIntensity = built
+        ? 1.1 + Math.sin(time * 2.4) * 0.3
+        : 0.14 + Math.sin(time * 1.6) * 0.04;
+    },
+  };
 }
