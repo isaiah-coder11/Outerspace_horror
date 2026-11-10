@@ -73,10 +73,13 @@ with turns and lateral drift.
   starting position).
 - The first two nights are **stable** — ship control does not fall, even if tasks
   are unfinished.
-- From **Day 3** the hull itself starts leaking: the bar falls **−5%** even when
-  all three tasks are complete, and **−10%** if any are unfinished.
-- Every three days the decay worsens by 5% (**Day 6:** −10% / −15%, **Day 9:**
-  −15% / −20%, up to −30% / −35%).
+- From **Day 3**, unfinished maintenance costs **−10%** ship control that night.
+  Finish all three tasks and the hull holds: there is no flat decay for a stable
+  ship.
+- From **Day 5** hull cracks open on walls and floors, each tracked by a
+  waypoint. A crack costs its own severity in ship control every night and
+  widens by 1% a night, to a 5% maximum, at which point another crack tears
+  open. Welding a crack costs a single reserve of any kind and takes 1% off it.
 - At **0%** the run ends. Whatever ends the run — the hull giving out or the
   thing reaching you — it lunges into the visor before the failure card appears.
   Survive as many shifts as you can.

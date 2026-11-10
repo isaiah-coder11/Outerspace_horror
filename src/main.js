@@ -937,8 +937,8 @@ function decayFor(day, allDone) {
     grace,
     tier,
     completeDrain: 0,
-    unfinishedDrain: grace ? 0 : 5,
-    drain: grace || allDone ? 0 : 5,
+    unfinishedDrain: grace ? 0 : 10,
+    drain: grace || allDone ? 0 : 10,
   };
 }
 
@@ -952,10 +952,10 @@ function updateDecayHint() {
     decayHint.textContent = 'HULL STABLE · NO NIGHTLY LOSS';
     decayHint.className = 'decay-hint grace';
   } else if (open > 0) {
-    decayHint.textContent = `OPEN CRACKS −${open}% NIGHTLY · +5% IF UNFINISHED`;
+    decayHint.textContent = `OPEN CRACKS −${open}% NIGHTLY · +10% IF UNFINISHED`;
     decayHint.className = `decay-hint ${open >= CRACK_MAX || tier > 0 ? 'crit' : 'warn'}`;
   } else {
-    decayHint.textContent = 'NO OPEN CRACKS · −5% ONLY IF UNFINISHED';
+    decayHint.textContent = 'NO OPEN CRACKS · −10% ONLY IF UNFINISHED';
     decayHint.className = `decay-hint ${tier > 0 ? 'crit' : 'warn'}`;
   }
 }
@@ -1285,12 +1285,18 @@ function openEndModal() {
 
   const decay = decayFor(state.day, allDone);
   const open = crackDamage();
-  modalSummary.textContent = `Maintenance ${done}/3 complete.`;
+  const tonight = decay.grace ? 0 : open + (allDone ? 0 : 10);
+
+  modalSummary.textContent = `Maintenance ${done}/3 complete — ship control −${tonight}% tonight.`;
   modalWarn.textContent = decay.grace
-    ? 'HULL STABLE — no ship control loss tonight, even if maintenance is unfinished.'
-    : open > 0
-      ? `HULL CRACKS — ${open}% ship control tonight${allDone ? '' : ' · +5% if unfinished'}.`
-      : `NO OPEN CRACKS — ${allDone ? 'ship control holds' : '5% lost if maintenance stays unfinished'}.`;
+    ? 'HULL STABLE — the first two nights are grace; no ship control is lost, even with tasks unfinished.'
+    : allDone
+      ? open > 0
+        ? `ALL TASKS COMPLETE — the only loss is ${open}% from the open hull cracks.`
+        : 'ALL TASKS COMPLETE — no open cracks; ship control holds tonight.'
+      : open > 0
+        ? `TASKS UNFINISHED — 10% for skipped maintenance plus ${open}% of cracks, so −${tonight}% tonight.`
+        : 'TASKS UNFINISHED — 10% ship control tonight. Finish all three tasks to stop it.';
   modalWarn.classList.toggle('safe', decay.grace || (allDone && open <= 0));
   modal.classList.remove('hidden');
   setHovered(null);
@@ -1322,7 +1328,7 @@ async function runNight() {
   const allDone = Object.values(state.tasks).every((task) => task && task.complete);
   const decay = decayFor(state.day, allDone);
   const crackLoss = crackDamage();
-  const drain = decay.grace ? 0 : crackLoss + (allDone ? 0 : 5);
+  const drain = decay.grace ? 0 : crackLoss + (allDone ? 0 : 10);
   const reserveDrain = decay.grace ? 0 : RESOURCE_DRAIN_BASE + decay.tier * 2;
   const before = state.life;
   const after = Math.max(0, before - drain);
@@ -1349,7 +1355,7 @@ async function runNight() {
       ? 'NO OPEN CRACKS — SHIP CONTROL HOLDS'
       : allDone
         ? `HULL CRACKS — SHIP CONTROL −${drain}%`
-        : `CRACKS + UNFINISHED MAINTENANCE — SHIP CONTROL −${drain}%`;
+        : `INCOMPLETE MAINTENANCE −10% + CRACKS −${crackLoss}% · TOTAL −${drain}%`;
   nightDrain.textContent = reserveDrain > 0 ? `${drainLine} · RESERVES −${reserveDrain}` : drainLine;
   nightDrain.className = `night-drain ${decay.grace || drain <= 0 ? 'good' : 'bad'}`;
   nightDrain.classList.remove('show');
