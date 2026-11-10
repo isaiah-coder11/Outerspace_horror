@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#04070b" />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23050a0e'/%3E%3Ccircle cx='16' cy='16' r='8' fill='none' stroke='%237fe4ff' stroke-width='2'/%3E%3Ccircle cx='16' cy='16' r='2.5' fill='%23ff4d54'/%3E%3C/svg%3E"
+    />
+    <title>VOID SHIFT — EREBUS-9</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <div id="app">
+      <canvas id="scene"></canvas>
+
+      <div id="grain" aria-hidden="true"></div>
+      <div id="scanlines" aria-hidden="true"></div>
+      <div id="vignette" aria-hidden="true"></div>
+      <div id="scareFlash" aria-hidden="true"></div>
+      <div id="endingBorder" aria-hidden="true"></div>
+      <div id="struggle" class="hidden" aria-hidden="true">
+        <div class="struggle-card">
+          <div class="struggle-eyebrow">IT HAS YOU</div>
+          <div class="struggle-title">MASH <span>SPACE</span></div>
+          <div class="struggle-track"><div id="struggleFill"></div></div>
+          <div class="struggle-row">
+            <span id="strugglePress">0</span>
+            <span id="struggleCost">—</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ───────────────────────── HUD ───────────────────────── -->
+      <div id="hud" class="hidden">
+        <div id="waypoints" aria-hidden="true"></div>
+
+        <header id="topbar">
+          <div class="tb-side tb-left">
+            <span class="vessel">EREBUS&#8209;9</span>
+            <span class="tb-sub">DEEP SALVAGE</span>
+          </div>
+
+          <div class="tb-main">
+            <div class="bar-meta">
+              <span class="bar-label">SHIP CONTROL</span>
+              <span id="lifeValue" class="bar-value">100%</span>
+            </div>
+            <div class="bar-track">
+              <div id="lifeFill" class="bar-fill" data-level="ok"></div>
+              <div class="bar-ticks" aria-hidden="true"></div>
+            </div>
+            <div class="vitals">
+              <div class="vital">
+                <span class="vital-label">ENERGY</span>
+                <div class="vital-track"><div id="energyFill" class="vital-fill" data-level="ok"></div></div>
+                <span id="energyValue" class="vital-value">100%</span>
+              </div>
+              <div class="vital">
+                <span class="vital-label">HUNGER</span>
+                <div class="vital-track"><div id="hungerFill" class="vital-fill hunger" data-level="ok"></div></div>
+                <span id="hungerValue" class="vital-value">100%</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="tb-side tb-right">
+            <span id="dayLabel" class="day">DAY 01</span>
+            <span id="taskCount" class="tb-sub">0/3 TASKS</span>
+            <div id="shiftTimer" class="shift-timer">
+              <span class="timer-label">SHIFT</span>
+              <span id="timerValue">04:00</span>
+              <div class="timer-track"><div id="timerFill"></div></div>
+            </div>
+          </div>
+        </header>
+
+        <aside id="taskPanel" aria-label="Daily maintenance">
+          <h2>DAILY MAINTENANCE</h2>
+          <ul id="taskList"></ul>
+          <div id="reserves" class="reserves" aria-label="Compartment reserves">
+            <span class="reserve" data-res="power">POWER <b id="resPower">30</b><i id="resPowerNext" class="reserve-next"></i></span>
+            <span class="reserve" data-res="biomass">BIOMASS <b id="resBiomass">30</b><i id="resBiomassNext" class="reserve-next"></i></span>
+            <span class="reserve" data-res="data">DATA <b id="resData">30</b><i id="resDataNext" class="reserve-next"></i></span>
+          </div>
+          <p id="reserveForecast" class="reserve-forecast" data-level="ok">NEXT NIGHT · NO LEAK — RESERVES HOLD</p>
+          <p class="panel-hint">
+            <span class="dot"></span> Cryo pod · central hub · end shift
+          </p>
+          <p class="panel-hint food-hint">
+            <span class="dot"></span> Hydro Bay · east · daily food harvest
+          </p>
+          <p class="decay-hint grace" id="decayHint">HULL STABLE · NO NIGHTLY LOSS</p>
+        </aside>
+
+        <div id="roomBanner" class="hidden"><span></span></div>
+
+        <div id="crosshair" aria-hidden="true">
+          <span class="ch-dot"></span>
+          <span class="ch-bracket ch-t"></span>
+          <span class="ch-bracket ch-b"></span>
+          <span class="ch-bracket ch-l"></span>
+          <span class="ch-bracket ch-r"></span>
+        </div>
+
+        <div id="interactPrompt" class="hidden">
+          <kbd>E</kbd><span id="interactText"></span>
+        </div>
+
+        <div id="backpack" aria-label="Backpack">
+          <div class="bp-head"><span>BACKPACK</span><span id="bpCount">0/4</span></div>
+          <div id="bpSlots" class="bp-slots"></div>
+          <p id="storeLine" class="bp-stores" data-level="ok">STORES · WRE 5 · FIL 5 · PRO 5</p>
+        </div>
+
+        <div id="log" aria-live="polite"></div>
+      </div>
+
+      <!-- ─────────────────────── START ─────────────────────── -->
+      <div id="startScreen" class="overlay">
+        <div class="start-inner">
+          <p class="eyebrow">SALVAGE LOG · VESSEL EREBUS-9 · DAY 01</p>
+          <h1 class="title">VOID<span>SHIFT</span></h1>
+          <p class="lede">
+            The crew is gone. The ship still needs you.<br />
+            Maintain three compartments, harvest food, and keep the hull under control.
+            At night the lights go out &mdash; and something walks the corridors.
+          </p>
+
+          <div class="rules">
+            <div class="rule">
+              <span class="rule-key">DAY</span>
+              <p>Repair one task in each compartment and harvest food in <strong>Hydro Bay</strong>
+                before the shift timer runs out. Every repair step burns a reserve that
+                <strong>another bay produces</strong> — run one dry and the chain stalls.</p>
+            </div>
+            <div class="rule">
+              <span class="rule-key">NIGHT</span>
+              <p>The first two nights are stable. After that, ship control falls every night &mdash;
+                and the hull cracks spread <strong class="amber">even with maintenance complete</strong>.</p>
+            </div>
+            <div class="rule">
+              <span class="rule-key">RULES</span>
+              <p>Eat to hold off hunger. If control reaches <strong class="red">0%</strong> the hull fails.
+                Below <strong class="red">20%</strong>, something hunts you.</p>
+            </div>
+          </div>
+
+          <div class="controls">
+            <span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move</span>
+            <span><kbd>MOUSE</kbd> look</span>
+            <span><kbd>SHIFT</kbd> run</span>
+            <span><kbd>E</kbd> interact</span>
+            <span><kbd>ESC</kbd> pause</span>
+          </div>
+
+          <button id="startBtn" class="btn" type="button">BEGIN SHIFT</button>
+
+          <div id="resumePanel" class="resume-panel hidden">
+            <button id="resumeBtn" class="btn" type="button">RESUME SHIFT</button>
+            <p id="resumeMeta" class="resume-meta">DAY 01 · SHIP CONTROL 100%</p>
+            <button id="resetBtn" class="reset-link" type="button">Reset shift</button>
+          </div>
+
+          <p class="footnote">Desktop + mouse recommended · headphone warning · audio is generated live</p>
+        </div>
+      </div>
+
+      <!-- ─────────────────────── PAUSE ─────────────────────── -->
+      <div id="pauseScreen" class="overlay hidden">
+        <div class="pause-inner">
+          <p class="eyebrow">SIGNAL INTERRUPTED</p>
+          <h2>PAUSED</h2>
+          <p>Click anywhere to return to the shift.</p>
+          <div class="controls small">
+            <span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move</span>
+            <span><kbd>MOUSE</kbd> look</span>
+            <span><kbd>E</kbd> interact</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ─────────────────────── MODAL ─────────────────────── -->
+      <div id="modal" class="overlay hidden">
+        <div class="modal-box">
+          <p class="eyebrow" id="modalEyebrow">CRYO POD · CYCLE COMPLETE</p>
+          <h2>END SHIFT</h2>
+          <p id="modalSummary">Maintenance 0/3 complete.</p>
+          <p id="modalWarn" class="modal-warn">Unfinished repair costs an extra 5% ship control tonight.</p>
+          <div class="modal-keys">
+            <span><kbd>E</kbd> enter cryo pod</span>
+            <span><kbd>Q</kbd> keep working</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ─────────────────────── NIGHT ─────────────────────── -->
+      <div id="nightScreen" class="overlay hidden">
+        <div class="night-inner">
+          <div class="night-head">
+            <span id="nightDay" class="night-day">NIGHT 01</span>
+            <div class="night-bar">
+              <div class="bar-meta">
+                <span class="bar-label">SHIP CONTROL</span>
+                <span id="nightLifeValue" class="bar-value">100%</span>
+              </div>
+              <div class="bar-track">
+                <div id="nightLifeFill" class="bar-fill" data-level="ok"></div>
+              </div>
+            </div>
+          </div>
+          <div class="night-copy">
+            <p id="nightLine1" class="night-line"></p>
+            <p id="nightLine2" class="night-line dim"></p>
+            <p id="nightDrain" class="night-drain"></p>
+          </div>
+        </div>
+      </div>
+
+      <!-- ───────────────────── GAME OVER ───────────────────── -->
+      <div id="gameOver" class="overlay hidden">
+        <div class="go-inner">
+          <p class="eyebrow red" id="goEyebrow">SHIP CONTROL FAILURE</p>
+          <h2 class="go-title" id="goTitle">THE HULL<br />GAVE OUT</h2>
+          <p id="goStats" class="go-stats">Shifts survived: 0</p>
+          <p class="go-line" id="goLine">The corridor is quiet now.</p>
+          <button id="restartBtn" class="btn" type="button">WAKE AGAIN</button>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

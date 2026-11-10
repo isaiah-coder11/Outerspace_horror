@@ -1,1 +1,156 @@
-# Outerspace_horror
+# VOID SHIFT — EREBUS-9
+
+A short first-person horror maintenance game built with Three.js and Vite.
+
+You are the last caretaker of the derelict salvage vessel **EREBUS-9**. Each day,
+three compartments fail in different ways. Fix them before you seal yourself in
+the cryo pod. At night, ship control falls — and the hull never stops cracking.
+
+## Run it
+
+```bash
+npm install
+npm run dev      # http://localhost:3000
+npm run build    # production bundle in dist/
+```
+
+Requires a browser with WebGL and a mouse + keyboard.
+
+## Controls
+
+| Input | Action |
+| --- | --- |
+| `W` `A` `S` `D` / arrows | move |
+| mouse | look (pointer lock; if the cursor stays visible, hold left click and drag) |
+| `Shift` | run |
+| `E` | interact / confirm |
+| `Q` | close the end-shift dialog |
+| `Esc` | pause |
+
+The suit has mass. Movement accelerates and coasts instead of starting and
+stopping instantly, the helmet view eases toward your mouse, and the camera leans
+with turns and lateral drift.
+
+## Rules
+
+- The **SHIP CONTROL** bar at the top starts at 100%. It is the hull, life support
+  and navigation holding together as one number.
+- **ENERGY** drains as you walk and falls fast when you sprint. Standing still
+  recharges it. **HUNGER** drains slowly all day. At near-zero energy or hunger
+  your movement slows and the visor dims.
+- **Hydro Bay** (east) grows one meal per day. Harvest it to gain **+45 hunger**
+  and **+25 energy**. It does not grow back until the next day.
+- Three rooms — **Reactor Bay** (north), **Hydro Bay** (east), **Nav / Comms**
+  (west) — each hold one daily task. Access them through the hub and its three
+  corridors.
+- Every compartment runs on a **reserve** and burns a different one. Reactor
+  burns **BIOMASS** to make **POWER**, Nav burns **POWER** to make **DATA**, and
+  Hydro burns **DATA** to make **BIOMASS**. You start with 30 of each.
+- Each repair step costs **1** of the room's incoming reserve and pays **1** of
+  its own; finishing a task pays a bonus of **4**. The panel lists each room's
+  cost and payout, and an empty reserve locks its units until the producing bay
+  runs again.
+- Every repair step also needs the right **tool** in your **backpack**: a
+  **WRENCH** for Reactor Bay, a **FILTER** for Hydro Bay and a **PROBE** for Nav /
+  Comms. Each tool is stocked in a *different* bay's supply locker — the wrench
+  sits on the **antenna rack** in Nav / Comms, the filters in the **coolant
+  locker** in Reactor Bay, the probes in the **hydro cabinet** in Hydro Bay — so
+  every step is a walk across the ship.
+- The backpack holds **4** tools. Press `E` at a locker to take one, then `E` on a
+  repair unit to work it: the step spends the tool for good. Without the tool the
+  unit refuses and nothing is burned, and the pointer switches to the locker that
+  stocks it.
+- The lockers **restock every morning with less than the morning before** — 5, 4,
+  3, 2, then 1 tool each. Early shifts can afford a wasted tool; late ones have to
+  plan the walk.
+- Each reserve also shows the **next night's leak** beside its total, and the line
+  under the row warns when a bay will be dry or nearly dry by morning — naming
+  the compartment that will stall first.
+- The **SHIFT** clock in the top right starts at **04:00**. It pauses while a
+  dialog or pause screen is open. At **00:00** the ship forces the cryo pod on you
+  and the night begins.
+- End the day early by entering the **cryo pod** in the central hub (behind your
+  starting position).
+- The first two nights are **stable** — ship control does not fall, even if tasks
+  are unfinished.
+- From **Day 3** the hull itself starts leaking: the bar falls **−5%** even when
+  all three tasks are complete, and **−10%** if any are unfinished.
+- Every three days the decay worsens by 5% (**Day 6:** −10% / −15%, **Day 9:**
+  −15% / −20%, up to −30% / −35%).
+- At **0%** the run ends. Whatever ends the run — the hull giving out or the
+  thing reaching you — it lunges into the visor before the failure card appears.
+  Survive as many shifts as you can.
+
+## The thing in the ship
+
+The monster escalates with ship control. At night, ship control falls and the
+thing gets bolder, even on days when every task is finished. It is gaunt and
+wet-skinned, slung forward on arms that reach past its knees; where eyes should
+be there are two white rings, and the jaw hangs open on a ring of needle teeth.
+The same body is the watcher in the dark, the hunter that walks at critical
+control, and whatever lunges at the visor when the run ends: it hangs back for a
+breath, the jaw hinges open, its head snaps side to side, both arms come up for
+the grab, and then the face hits the glass. The visor throws itself ten pixels
+left and right, a red warning border closes in, and it screeches the whole way
+in before the flash takes the screen.
+
+| Ship control | Behaviour |
+| --- | --- |
+| 100–80 | It lurks out of sight. Eyes blink in the vents and blood dries on the walls. |
+| 80–50 | It pops out of a door frame, stands in it for two seconds, and is gone. |
+| 50–20 | It waits in the corridor without moving. Get within a couple of metres and it grabs you. |
+| 20–0 | It hunts. The chase starts at 1.3 m/s and closes on 3 m/s as the hull dies. |
+
+The corridor grab is a struggle: **mash SPACE** to fill the bar inside the
+four-second window. Breaking free burns ten units of whichever reserve you hold
+most of — power, biomass or data. With every reserve at zero there is nothing
+to burn, and it does not let go.
+
+From **Day 4** the hull shows hairline cracks. Every night the fractures spread
+and widen, whether or not maintenance was completed. The same leaks eat into the
+compartment reserves — **−3** a night from Day 3, rising with the decay tier — so
+a shift that skips a room eventually strands the room downstream of it.
+
+Tasks are drawn from nine hand-built variations (three per room) and rotate each
+day: activate units in a displayed order, service every unit in a room, or cycle
+each unit through states until it reads clean. Every one of them is multi-step,
+and every step needs a tool from a locker in another bay plus a reserve from
+another bay, so a shift is a loop between the stores and the work. The opening days are gentle —
+Day 1 uses simple service tasks, Day 2 introduces sequences, and every archetype
+is in rotation from Day 3.
+
+On-screen pointers show every unfinished room through the walls, with the
+distance. Inside a room, the pointers switch to the individual units that still
+need attention; sequence tasks mark only the next unit. When all three rooms are
+done, a pointer marks the cryo pod. Completing a room makes the ship a little
+louder.
+
+## What's inside
+
+- `src/main.js` — game loop, suit-momentum movement and collision, energy/hunger
+  and shift clock, interactions, day/night cycle, HUD and waypoint wiring, monster
+  phases and horror event scheduling.
+- `src/world.js` — ship geometry, procedural textures, lighting, props, hull
+  cracks, vent eyes, blood decals, the watching apparition and the hunter.
+- `src/tasks.js` — item meshes, the nine tasks and task runtime logic.
+- `src/audio.js` — fully procedural WebAudio ambience (drone, wind, whispers,
+  creaks, interface tones, heartbeat); no audio files.
+- `src/style.css` — HUD, title screen, night sequence, end-shift dialog and
+  game-over overlays.
+
+There are no image, model or audio assets: every texture and sound is generated
+at runtime.
+
+## Saving and resetting
+
+Progress is stored in `localStorage` after each task interaction, at the start of
+every day, and when the page is hidden or closed (day, ship control, energy,
+hunger, compartment reserves, backpack contents, locker stock, remaining shift
+time, whether today's meal was harvested, task selection, sequence orders and
+which units have already been serviced). Older saves without reserves or tools
+start with the full compliment and a full backpack of nothing.
+
+Refreshing the page shows a **RESUME SHIFT** button with the saved day and ship
+control value. **Reset shift** (click twice to confirm) erases the save and
+starts a new run from Day 1. A run that ends in ship-control failure or in the
+monster clears its save automatically.
