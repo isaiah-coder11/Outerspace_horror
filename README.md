@@ -89,9 +89,10 @@ with turns and lateral drift.
 South of the central hub, down the south corridor, sits the escape bay: a
 half-built pod on a launch cradle with a build console in front of it.
 Assembling it costs **20 reserves** (7 power, 7 biomass, 6 data) and, once
-built, launching it finishes the run — you leave Erebus-9. The clamps refuse
-while any maintenance task is unfinished or any hull crack is open, and a
-refusal spends nothing, so the reserves the tasks and welds demand are exactly
+built, launching it finishes the run — you leave Erebus-9. The pod stays sealed
+while hub security is below **30%**, so a failing ship cannot be abandoned;
+once control is back above 30% the clamps still refuse while any maintenance
+task is unfinished or any hull crack is open. A refusal spends nothing, so the reserves the tasks and welds demand are exactly
 the reserves the pod wants. The bay is always marked with a waypoint.
 
 ## The thing in the ship

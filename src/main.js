@@ -28,6 +28,7 @@ const pick = (list) => list[Math.floor(Math.random() * list.length)];
 // and the clamps only release on a sound hull.
 const ESCAPE_COST = { power: 7, biomass: 7, data: 6 };
 const ESCAPE_TOTAL = Object.values(ESCAPE_COST).reduce((sum, value) => sum + value, 0);
+const POD_MIN_SECURITY = 30;
 
 const ESCAPE_LINES = [
   'The pod punches clear of the hull. Erebus-9 shrinks to a light, then nothing.',
@@ -230,6 +231,9 @@ const world = createWorld(scene);
 const audio = new AudioEngine();
 
 let pendingSave = null;
+// Set once the escape pod exists, so setLife() can refresh its seal state
+// without touching the pod before it is built.
+let refreshPodHandle = () => {};
 let resetArmed = false;
 let resetTimer = 0;
 
@@ -363,6 +367,7 @@ const escapeHandle = registerInteractable(escapePod.group, {
   label: `Build escape pod — ${ESCAPE_TOTAL} reserves`,
   onInteract: useEscapePod,
 });
+refreshPodHandle = refreshEscapePod;
 
 // one meal per day grows in the east bay
 const hydro = createHydroponics();
@@ -552,6 +557,7 @@ function setLife(value) {
   lifeFill.dataset.level = lifeLevel(state.life);
   lifeValue.textContent = `${Math.round(state.life)}%`;
   vignette.classList.toggle('critical', state.life <= 25);
+  refreshPodHandle();
 }
 
 function renderNightLife(value) {
@@ -728,6 +734,16 @@ function lockedResource(key) {
 // ─────────────────────────────────────────────────────────────
 
 function podSealBlocker() {
+  if (state.life < POD_MIN_SECURITY) {
+    log(
+      `ESCAPE POD SEALED — HUB SECURITY ${Math.round(state.life)}% (MINIMUM ${POD_MIN_SECURITY}%). RESTORE SHIP CONTROL FIRST.`,
+      'bad',
+    );
+    audio.deny();
+    world.flicker(1.4);
+    return true;
+  }
+
   if (state.cracks.length) {
     const open = crackDamage();
     log(`ESCAPE POD REFUSED — HULL CRACK OPEN (${open}%). WELD IT SHUT FIRST.`, 'bad');
@@ -758,9 +774,11 @@ function podShortfall() {
 
 function refreshEscapePod() {
   escapePod.setBuilt(state.podBuilt);
-  escapeHandle.label = state.podBuilt
-    ? 'Launch escape pod — leave EREBUS-9'
-    : `Build escape pod — ${ESCAPE_TOTAL} reserves`;
+  escapeHandle.label = state.life < POD_MIN_SECURITY
+    ? `Escape pod sealed — hub security ${Math.round(state.life)}% (min ${POD_MIN_SECURITY}%)`
+    : state.podBuilt
+      ? 'Launch escape pod — leave EREBUS-9'
+      : `Build escape pod — ${ESCAPE_TOTAL} reserves`;
 
   const entry = waypointEls.get('escape');
   if (entry) entry.nameEl.textContent = state.podBuilt ? 'ESCAPE POD' : 'ESCAPE BAY';
