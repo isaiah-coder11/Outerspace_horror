@@ -82,6 +82,11 @@ const SHIFT_SECONDS = 240;
 const START_RESOURCES = { power: 30, biomass: 30, data: 30 };
 const RESOURCE_DRAIN_BASE = 3;
 
+// Hull cracks open from this day on. Every crack costs its own severity in
+// ship control each night and widens until somebody welds it shut.
+const CRACK_START_DAY = 5;
+const CRACK_MAX = 5;
+
 // Tools live in the supply lockers. Every morning each locker is
 // restocked with one less tool than the morning before, so the
 // first shifts have spares to waste and the late ones do not.
@@ -244,6 +249,8 @@ const state = {
   standRoom: null,
   standCooldown: 0,
   escape: null,
+  cracks: [],
+  patches: [],
   shake: 0,
   tasks: {},
   completedCount: 0,
@@ -691,6 +698,143 @@ function lockedResource(key) {
   state.shake = Math.max(state.shake, 0.24);
 }
 
+// ─────────────────────────────────────────────────────────────
+// hull cracks
+//
+// From day 5 the hull opens a crack on a wall or the floor. It is always
+// marked with a waypoint, costs its severity in ship control every night,
+// and widens by a point a night until it is welded. Welding costs one
+// reserve of any kind and takes a point off it; a 1% crack closes for good.
+// ─────────────────────────────────────────────────────────────
+
+let crackHandles = new Map();
+
+function crackDamage() {
+  return state.cracks.reduce((sum, crack) => sum + crack.severity, 0);
+}
+
+function crackLabel(crack) {
+  return `WELD HULL CRACK ${crack.severity}% — 1 RESERVE`;
+}
+
+// Any reserve works, so the driest bay never traps the repair.
+function crackReserveKey() {
+  let key = 'power';
+  ['power', 'biomass', 'data'].forEach((candidate) => {
+    if ((state.resources[candidate] ?? 0) > (state.resources[key] ?? 0)) key = candidate;
+  });
+  return key;
+}
+
+function resetCracks() {
+  state.cracks = [];
+  state.patches = [];
+  crackHandles.forEach((handle) => removeInteractable(handle));
+  crackHandles.clear();
+  world.setCracks([]);
+  world.setPatches([]);
+}
+
+function patchCrack(slot) {
+  const crack = state.cracks.find((entry) => entry.slot === slot);
+  if (!crack) return;
+
+  const key = crackReserveKey();
+  if (!canAfford(key, 1)) {
+    lockedResource(key);
+    return;
+  }
+
+  spendResource(key, 1);
+  crack.severity -= 1;
+  world.flicker(1.4);
+  audio.beep(560, 0.09, 'square', 0.04);
+
+  if (crack.severity <= 0) {
+    state.cracks = state.cracks.filter((entry) => entry.slot !== slot);
+    if (!state.patches.includes(slot)) state.patches.push(slot);
+    audio.success();
+    log('HULL CRACK WELDED SHUT.', 'good');
+  } else {
+    log(`HULL CRACK PATCHED — ${crack.severity}% STILL OPEN.`, 'warn');
+  }
+
+  syncCracks();
+  saveProgress();
+}
+
+function spawnCrack() {
+  const used = new Set(state.cracks.map((crack) => crack.slot));
+  const free = world.crackSlots
+    .map((slot) => slot.index)
+    .filter((index) => !used.has(index));
+  if (!free.length) return null;
+
+  const slot = free[Math.floor(Math.random() * free.length)];
+  state.patches = state.patches.filter((index) => index !== slot);
+
+  const crack = { slot, severity: 1 };
+  state.cracks.push(crack);
+  return crack;
+}
+
+function syncCrackTargets() {
+  const active = new Set(state.cracks.map((crack) => crack.slot));
+
+  crackHandles.forEach((handle, slot) => {
+    if (active.has(slot)) return;
+    removeInteractable(handle);
+    crackHandles.delete(slot);
+  });
+
+  state.cracks.forEach((crack) => {
+    const slot = world.crackSlots[crack.slot];
+    if (!slot) return;
+
+    let handle = crackHandles.get(crack.slot);
+    if (!handle) {
+      // An invisible box over the crack so the crosshair can find it.
+      const proxy = new THREE.Mesh(
+        new THREE.BoxGeometry(1.7, 1.2, 0.18),
+        new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false }),
+      );
+      proxy.position.set(slot.x, slot.y, slot.z);
+      if (slot.floor) proxy.rotation.x = -Math.PI / 2;
+      else proxy.rotation.y = slot.ry || 0;
+
+      handle = registerInteractable(proxy, {
+        room: roomAt(slot.x, slot.z),
+        label: crackLabel(crack),
+        onInteract: () => patchCrack(crack.slot),
+      });
+      crackHandles.set(crack.slot, handle);
+    } else {
+      handle.label = crackLabel(crack);
+    }
+  });
+}
+
+function syncCracks() {
+  world.setCracks(state.cracks);
+  world.setPatches(state.patches);
+  syncCrackTargets();
+  buildWaypoints();
+  updateDecayHint();
+}
+
+// Every open crack widens by a point a night. One already at its widest
+// tears a second crack open somewhere else on the hull.
+function growCracks() {
+  let maxed = false;
+
+  state.cracks.forEach((crack) => {
+    if (crack.severity >= CRACK_MAX) maxed = true;
+    else crack.severity += 1;
+  });
+
+  if (maxed) spawnCrack();
+}
+
 function setHovered(next) {
   if (next === hovered) return;
   hovered = next;
@@ -782,30 +926,36 @@ function allowedTaskTypes(day) {
   return ['count', 'sequence', 'cycle'];
 }
 
+// Nightly ship-control loss no longer includes a flat slice for a stable
+// hull: from day 5 the loss is the sum of the open cracks (crackDamage()),
+// and unfinished maintenance adds five on top of that.
 function decayFor(day, allDone) {
   const grace = day <= 2;
   const tier = grace ? 0 : Math.min(5, Math.floor((day - 3) / 3));
-  const completeDrain = grace ? 0 : 5 + tier * 5;
 
   return {
     grace,
     tier,
-    completeDrain,
-    unfinishedDrain: grace ? 0 : completeDrain + 5,
-    drain: grace ? 0 : completeDrain + (allDone ? 0 : 5),
+    completeDrain: 0,
+    unfinishedDrain: grace ? 0 : 5,
+    drain: grace || allDone ? 0 : 5,
   };
 }
 
 function updateDecayHint() {
   if (!decayHint) return;
 
-  const { grace, tier, completeDrain, drain } = decayFor(state.day, false);
+  const { grace, tier } = decayFor(state.day, false);
+  const open = crackDamage();
 
   if (grace) {
     decayHint.textContent = 'HULL STABLE · NO NIGHTLY LOSS';
     decayHint.className = 'decay-hint grace';
+  } else if (open > 0) {
+    decayHint.textContent = `OPEN CRACKS −${open}% NIGHTLY · +5% IF UNFINISHED`;
+    decayHint.className = `decay-hint ${open >= CRACK_MAX || tier > 0 ? 'crit' : 'warn'}`;
   } else {
-    decayHint.textContent = `NIGHTLY DECAY −${completeDrain}% · −${drain}% IF UNFINISHED`;
+    decayHint.textContent = 'NO OPEN CRACKS · −5% ONLY IF UNFINISHED';
     decayHint.className = `decay-hint ${tier > 0 ? 'crit' : 'warn'}`;
   }
 }
@@ -930,12 +1080,12 @@ function startDay(savedTasks = null, options = {}) {
 
   dayLabel.textContent = `DAY ${String(state.day).padStart(2, '0')}`;
   refreshTasks();
-  buildWaypoints();
+  if (state.day >= CRACK_START_DAY && state.cracks.length === 0) spawnCrack();
+  syncCracks();
   updateDecayHint();
   setVitalsUI();
   updateTimerUI();
   refreshHydroLabel();
-  world.setHullDamage(Math.max(0, state.day - 3));
   applyMonsterPhase();
   setHovered(null);
   log(`DAY ${state.day} — three compartments need attention.`, 'warn');
@@ -997,6 +1147,8 @@ function saveProgress() {
     backpack: { ...state.backpack },
     lockers: { ...state.lockers },
     harvestedToday: state.harvestedToday,
+    cracks: state.cracks.map((crack) => ({ ...crack })),
+    patches: [...state.patches],
     lastPicks: { ...state.lastPicks },
     tasks: {
       reactor: reactor.snapshot(),
@@ -1068,6 +1220,26 @@ function resumeGame() {
   state.escape = null;
   struggleEl.classList.add('hidden');
   world.hideLurker();
+
+  resetCracks();
+  if (Array.isArray(save.cracks)) {
+    save.cracks.forEach((entry) => {
+      const slot = Number(entry && entry.slot);
+      const severity = Number(entry && entry.severity);
+      if (!Number.isInteger(slot) || slot < 0 || slot >= world.crackSlots.length) return;
+      if (!Number.isFinite(severity) || severity <= 0) return;
+      if (state.cracks.some((crack) => crack.slot === slot)) return;
+      state.cracks.push({ slot, severity: clamp(Math.round(severity), 1, CRACK_MAX) });
+    });
+  }
+  if (Array.isArray(save.patches)) {
+    save.patches.forEach((value) => {
+      const slot = Number(value);
+      if (!Number.isInteger(slot) || slot < 0 || slot >= world.crackSlots.length) return;
+      if (!state.patches.includes(slot)) state.patches.push(slot);
+    });
+  }
+
   state.lastPicks = save.lastPicks && typeof save.lastPicks === 'object' ? { ...save.lastPicks } : {};
   state.tasks = {};
   state.completedCount = 0;
@@ -1101,11 +1273,14 @@ function openEndModal() {
   const allDone = done === 3;
 
   const decay = decayFor(state.day, allDone);
+  const open = crackDamage();
   modalSummary.textContent = `Maintenance ${done}/3 complete.`;
   modalWarn.textContent = decay.grace
     ? 'HULL STABLE — no ship control loss tonight, even if maintenance is unfinished.'
-    : `HULL DECAY — ${decay.completeDrain}% ship control tonight · ${decay.unfinishedDrain}% if unfinished.`;
-  modalWarn.classList.toggle('safe', decay.grace);
+    : open > 0
+      ? `HULL CRACKS — ${open}% ship control tonight${allDone ? '' : ' · +5% if unfinished'}.`
+      : `NO OPEN CRACKS — ${allDone ? 'ship control holds' : '5% lost if maintenance stays unfinished'}.`;
+  modalWarn.classList.toggle('safe', decay.grace || (allDone && open <= 0));
   modal.classList.remove('hidden');
   setHovered(null);
   audio.beep(360, 0.1, 'sine', 0.05);
@@ -1135,7 +1310,8 @@ async function runNight() {
 
   const allDone = Object.values(state.tasks).every((task) => task && task.complete);
   const decay = decayFor(state.day, allDone);
-  const drain = decay.drain;
+  const crackLoss = crackDamage();
+  const drain = decay.grace ? 0 : crackLoss + (allDone ? 0 : 5);
   const reserveDrain = decay.grace ? 0 : RESOURCE_DRAIN_BASE + decay.tier * 2;
   const before = state.life;
   const after = Math.max(0, before - drain);
@@ -1158,11 +1334,13 @@ async function runNight() {
       : pick(NIGHT_AMBIENT_LINES);
   const drainLine = decay.grace
     ? 'HULL STABLE — SHIP CONTROL HOLDS'
-    : allDone
-      ? `HULL DECAY — SHIP CONTROL −${drain}%`
-      : `MAINTENANCE INCOMPLETE — SHIP CONTROL −${drain}%`;
+    : drain <= 0
+      ? 'NO OPEN CRACKS — SHIP CONTROL HOLDS'
+      : allDone
+        ? `HULL CRACKS — SHIP CONTROL −${drain}%`
+        : `CRACKS + UNFINISHED MAINTENANCE — SHIP CONTROL −${drain}%`;
   nightDrain.textContent = reserveDrain > 0 ? `${drainLine} · RESERVES −${reserveDrain}` : drainLine;
-  nightDrain.className = `night-drain ${decay.grace ? 'good' : 'bad'}`;
+  nightDrain.className = `night-drain ${decay.grace || drain <= 0 ? 'good' : 'bad'}`;
   nightDrain.classList.remove('show');
 
   nightScreen.classList.remove('hidden');
@@ -1187,6 +1365,7 @@ async function runNight() {
   renderNightLife(after);
   audio.powerDown();
   setLife(after);
+  growCracks();
 
   if (reserveDrain > 0) {
     Object.keys(START_RESOURCES).forEach((key) => {
@@ -1329,6 +1508,7 @@ function restart() {
   state.escape = null;
   struggleEl.classList.add('hidden');
   world.hideLurker();
+  resetCracks();
   state.lastPicks = {};
   setLife(100);
   respawnPlayer();
@@ -1367,6 +1547,7 @@ function startGame() {
   state.escape = null;
   struggleEl.classList.add('hidden');
   world.hideLurker();
+  resetCracks();
   state.lastPicks = {};
   state.tasks = {};
   state.completedCount = 0;
@@ -2219,6 +2400,12 @@ function buildWaypoints() {
     waypointEls.set(`store:${room}`, createWaypointEntry('unit', ROOM_META[room].short, '#ffcf8a'));
   });
 
+  state.cracks.forEach((crack) => {
+    const slot = world.crackSlots[crack.slot];
+    if (!slot) return;
+    waypointEls.set(`crack:${crack.slot}`, createWaypointEntry('unit', `CRACK ${crack.severity}%`, '#ff8a6a'));
+  });
+
   waypointEls.set('pod', createWaypointEntry('pod', 'CRYO POD', '#7fe4ff'));
 }
 
@@ -2311,6 +2498,23 @@ function updateWaypoints(dt) {
 
     const anchor = ROOM_POINTER_ANCHORS[roomId];
     drawWaypoint(entry, { ...anchor, label: ROOM_META[roomId].short }, cameraPos, width, height, false);
+  });
+
+  // An open crack is always marked, in whatever room it opened.
+  state.cracks.forEach((crack) => {
+    const slot = world.crackSlots[crack.slot];
+    const entry = waypointEls.get(`crack:${crack.slot}`);
+    if (!slot || !entry) return;
+
+    entry.el.classList.add('next');
+    drawWaypoint(
+      entry,
+      { x: slot.x, y: slot.y, z: slot.z, label: `CRACK ${crack.severity}%` },
+      cameraPos,
+      width,
+      height,
+      false,
+    );
   });
 
   if (['reactor', 'med', 'nav'].includes(currentRoom)) {
@@ -2454,7 +2658,8 @@ setResourcesUI();
 refreshToolsUI();
 updateTimerUI();
 refreshHydroLabel();
-world.setHullDamage(0);
+world.setCracks([]);
+world.setPatches([]);
 world.setDread(100);
 refreshTasks();
 respawnPlayer();

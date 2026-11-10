@@ -178,6 +178,41 @@ export function makeScrawlTexture(lines, color = '#7996a6') {
 // hull cracks and dried blood
 // ─────────────────────────────────────────────────────────────
 
+function makeWeldTexture() {
+  const [canvas, ctx] = makeCanvas(256, 256);
+  ctx.clearRect(0, 0, 256, 256);
+
+  ctx.fillStyle = 'rgba(54, 62, 70, 0.94)';
+  roundRect(ctx, 34, 30, 188, 196, 18);
+  ctx.fill();
+
+  ctx.strokeStyle = 'rgba(150, 164, 176, 0.7)';
+  ctx.lineWidth = 4;
+  roundRect(ctx, 34, 30, 188, 196, 18);
+  ctx.stroke();
+
+  // weld beads across the plate
+  ctx.strokeStyle = 'rgba(200, 212, 222, 0.5)';
+  ctx.lineWidth = 6;
+  ctx.setLineDash([7, 6]);
+  ctx.beginPath();
+  ctx.moveTo(48, 118);
+  ctx.lineTo(208, 118);
+  ctx.moveTo(128, 42);
+  ctx.lineTo(128, 214);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  ctx.fillStyle = 'rgba(214, 226, 236, 0.6)';
+  [[52, 48], [204, 48], [52, 208], [204, 208]].forEach(([x, y]) => {
+    ctx.beginPath();
+    ctx.arc(x, y, 5, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  return canvasTexture(canvas);
+}
+
 function makeCrackTexture() {
   const [canvas, ctx] = makeCanvas(512, 512);
   ctx.clearRect(0, 0, 512, 512);
@@ -1144,7 +1179,10 @@ export function createWorld(scene) {
 
   // ── hull damage, vents and the thing in the dark ──────────
   const crackTex = makeCrackTexture();
-  const crackMeshes = [];
+  const weldTex = makeWeldTexture();
+
+  // Every slot is a physical place a crack can open. Floor slots lie flat;
+  // each crack also owns the welded plate that covers it once repaired.
   const crackSpecs = [
     { x: 3.6, y: 1.55, z: -6.82, ry: 0 },
     { x: -6.82, y: 1.75, z: -3.4, ry: Math.PI / 2 },
@@ -1160,23 +1198,64 @@ export function createWorld(scene) {
     { x: 5.2, y: 1.1, z: 6.82, ry: Math.PI },
     { x: 17.0, y: 1.7, z: -2.42, ry: 0 },
     { x: -17.0, y: 1.4, z: 2.42, ry: Math.PI },
+    { x: -5.4, y: 0.02, z: 1.8, ry: 0.4, floor: true },
+    { x: 4.2, y: 0.02, z: -3.9, ry: 1.2, floor: true },
+    { x: 0.6, y: 0.02, z: -12.4, ry: 2.1, floor: true },
+    { x: 10.6, y: 0.02, z: -0.9, ry: 0.7, floor: true },
+    { x: 23.4, y: 0.02, z: 3.6, ry: 2.6, floor: true },
+    { x: -23.6, y: 0.02, z: -3.8, ry: 1.6, floor: true },
+    { x: -3.2, y: 0.02, z: -25.2, ry: 0.9, floor: true },
+    { x: 2.8, y: 0.02, z: 15.0, ry: 1.9, floor: true },
   ];
 
-  crackSpecs.forEach((spec) => {
-    const material = new THREE.MeshBasicMaterial({
-      map: crackTex,
-      transparent: true,
-      opacity: 0,
-      depthWrite: false,
-      side: THREE.DoubleSide,
-      fog: true,
-    });
-    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(1.9, 1.4), material);
-    mesh.position.set(spec.x, spec.y, spec.z);
-    mesh.rotation.y = spec.ry;
-    mesh.visible = false;
-    root.add(mesh);
-    crackMeshes.push(mesh);
+  const crackSlots = crackSpecs.map((spec, index) => {
+    const crack = new THREE.Mesh(
+      new THREE.PlaneGeometry(spec.floor ? 1.7 : 1.9, spec.floor ? 1.3 : 1.4),
+      new THREE.MeshBasicMaterial({
+        map: crackTex,
+        transparent: true,
+        opacity: 0,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+        fog: true,
+      }),
+    );
+    if (spec.floor) {
+      crack.position.set(spec.x, spec.y, spec.z);
+      crack.rotation.set(-Math.PI / 2, 0, spec.ry);
+    } else {
+      crack.position.set(spec.x, spec.y, spec.z);
+      crack.rotation.y = spec.ry;
+    }
+    crack.visible = false;
+    root.add(crack);
+
+    const patch = new THREE.Mesh(
+      new THREE.PlaneGeometry(0.95, 0.78),
+      new THREE.MeshBasicMaterial({
+        map: weldTex,
+        transparent: true,
+        opacity: 0.92,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+        fog: true,
+      }),
+    );
+    if (spec.floor) {
+      patch.position.set(spec.x, spec.y + 0.012, spec.z);
+      patch.rotation.set(-Math.PI / 2, 0, spec.ry);
+    } else {
+      patch.position.set(
+        spec.x + Math.sin(spec.ry) * 0.015,
+        spec.y,
+        spec.z + Math.cos(spec.ry) * 0.015,
+      );
+      patch.rotation.y = spec.ry;
+    }
+    patch.visible = false;
+    root.add(patch);
+
+    return { index, x: spec.x, y: spec.y, z: spec.z, ry: spec.ry, floor: !!spec.floor, mesh: crack, patch };
   });
 
   const bloodTex = makeBloodTexture();
@@ -1587,14 +1666,33 @@ export function createWorld(scene) {
     });
   }
 
-  function setHullDamage(level) {
-    crackMeshes.forEach((mesh, index) => {
-      mesh.visible = level >= index * 0.75;
-      if (!mesh.visible) return;
+  // list: [{ slot, severity }]; severity widens the crack, and a slot with
+  // no entry is either never used or welded (see setPatches).
+  function setCracks(list) {
+    crackSlots.forEach((slot) => {
+      slot.mesh.visible = false;
+      slot.mesh.material.opacity = 0;
+    });
 
-      const scale = Math.min(1.8, 0.6 + level * 0.1 + (index % 3) * 0.08);
-      mesh.scale.setScalar(scale);
-      mesh.material.opacity = Math.min(0.72, 0.22 + level * 0.055);
+    (list || []).forEach((entry) => {
+      const slot = crackSlots[entry.slot];
+      if (!slot) return;
+
+      const severity = Math.min(5, Math.max(1, Math.round(Number(entry.severity) || 1)));
+      slot.mesh.visible = true;
+      slot.mesh.scale.setScalar(0.55 + severity * 0.16);
+      slot.mesh.material.opacity = Math.min(0.86, 0.3 + severity * 0.11);
+    });
+  }
+
+  function setPatches(list) {
+    crackSlots.forEach((slot) => {
+      slot.patch.visible = false;
+    });
+
+    (list || []).forEach((index) => {
+      const slot = crackSlots[index];
+      if (slot) slot.patch.visible = true;
     });
   }
 
@@ -1738,7 +1836,9 @@ export function createWorld(scene) {
     pickGhostSpot,
     ventScare,
     finalScare,
-    setHullDamage,
+    setCracks,
+    setPatches,
+    crackSlots,
     setDread,
     setHunterActive,
     showLurker,
