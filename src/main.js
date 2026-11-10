@@ -1080,8 +1080,19 @@ function startDay(savedTasks = null, options = {}) {
 
   dayLabel.textContent = `DAY ${String(state.day).padStart(2, '0')}`;
   refreshTasks();
-  if (state.day >= CRACK_START_DAY && state.cracks.length === 0) spawnCrack();
+  if (state.day >= CRACK_START_DAY && state.cracks.length === 0) {
+    const crack = spawnCrack();
+    if (crack) {
+      const slot = world.crackSlots[crack.slot];
+      const room = slot ? roomAt(slot.x, slot.z) : 'hub';
+      const label = (ROOM_META[room] && ROOM_META[room].short) || 'THE HULL';
+      log(`HULL FRACTURE OPEN — ${label} · 1% · WAYPOINT SET.`, 'bad');
+    }
+  }
   syncCracks();
+  if (state.cracks.length) {
+    log(`OPEN HULL CRACKS — ${crackDamage()}% TOTAL · WELD ONE WITH 1 RESERVE.`, 'warn');
+  }
   updateDecayHint();
   setVitalsUI();
   updateTimerUI();

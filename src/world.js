@@ -231,8 +231,8 @@ function makeCrackTexture() {
     ctx.lineTo(nx, ny);
     ctx.stroke();
 
-    ctx.strokeStyle = 'rgba(186,208,220,0.72)';
-    ctx.lineWidth = width;
+    ctx.strokeStyle = 'rgba(216,234,246,0.94)';
+    ctx.lineWidth = width + 0.8;
     ctx.beginPath();
     ctx.moveTo(x, y);
     ctx.lineTo(nx, ny);
@@ -1255,7 +1255,35 @@ export function createWorld(scene) {
     patch.visible = false;
     root.add(patch);
 
-    return { index, x: spec.x, y: spec.y, z: spec.z, ry: spec.ry, floor: !!spec.floor, mesh: crack, patch };
+    // A cool additive halo so a fresh 1% crack still catches the eye in
+    // the dark, without reading as a light source.
+    const glow = new THREE.Mesh(
+      new THREE.PlaneGeometry(spec.floor ? 1.95 : 2.15, spec.floor ? 1.5 : 1.6),
+      new THREE.MeshBasicMaterial({
+        map: crackTex,
+        transparent: true,
+        opacity: 0,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+        side: THREE.DoubleSide,
+        fog: false,
+      }),
+    );
+    if (spec.floor) {
+      glow.position.set(spec.x, spec.y + 0.02, spec.z);
+      glow.rotation.set(-Math.PI / 2, 0, spec.ry);
+    } else {
+      glow.position.set(
+        spec.x + Math.sin(spec.ry) * 0.03,
+        spec.y,
+        spec.z + Math.cos(spec.ry) * 0.03,
+      );
+      glow.rotation.y = spec.ry;
+    }
+    glow.visible = false;
+    root.add(glow);
+
+    return { index, x: spec.x, y: spec.y, z: spec.z, ry: spec.ry, floor: !!spec.floor, mesh: crack, patch, glow };
   });
 
   const bloodTex = makeBloodTexture();
@@ -1672,6 +1700,8 @@ export function createWorld(scene) {
     crackSlots.forEach((slot) => {
       slot.mesh.visible = false;
       slot.mesh.material.opacity = 0;
+      slot.glow.visible = false;
+      slot.glow.material.opacity = 0;
     });
 
     (list || []).forEach((entry) => {
@@ -1679,9 +1709,15 @@ export function createWorld(scene) {
       if (!slot) return;
 
       const severity = Math.min(5, Math.max(1, Math.round(Number(entry.severity) || 1)));
+      const scale = 0.95 + severity * 0.18;
+
       slot.mesh.visible = true;
-      slot.mesh.scale.setScalar(0.55 + severity * 0.16);
-      slot.mesh.material.opacity = Math.min(0.86, 0.3 + severity * 0.11);
+      slot.mesh.scale.setScalar(scale);
+      slot.mesh.material.opacity = Math.min(1, 0.78 + severity * 0.045);
+
+      slot.glow.visible = true;
+      slot.glow.scale.setScalar(scale);
+      slot.glow.material.opacity = 0.16 + severity * 0.035;
     });
   }
 
