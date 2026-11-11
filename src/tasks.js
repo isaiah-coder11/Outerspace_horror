@@ -704,6 +704,14 @@ export function buildTask(def, roomId, api) {
       onInteract: () => {
         if (runtime.complete) return;
 
+        // A press only spends if it can actually take the step. A wrong
+        // sequence press still rejects the order below, but it must not
+        // eat a reserve and a tool on the way out.
+        if (!accepts(index)) {
+          if (def.type === 'sequence') handler(index);
+          return;
+        }
+
         // No reserve, no repair: this unit waits on another bay.
         if (costKey && typeof api.canAfford === 'function' && !api.canAfford(costKey, STEP_COST)) {
           if (typeof api.locked === 'function') api.locked(costKey);
@@ -733,6 +741,21 @@ export function buildTask(def, roomId, api) {
 
     items.push({ built, holder, label, interactable, ring, index, done: false, stateIndex: 0, atEnd: false });
   });
+
+  // Whether pressing this unit would count as a step right now. Sequence
+  // tasks only accept the next unit in the logged order; count tasks accept
+  // units that are not yet serviced; cycle tasks accept units short of the
+  // final state.
+  function accepts(index) {
+    if (runtime.complete) return false;
+
+    const item = items[index];
+    if (!item) return false;
+
+    if (def.type === 'sequence') return !!runtime.sequence && runtime.sequence[sequenceStep] === index;
+    if (def.type === 'cycle') return !item.atEnd;
+    return !item.done;
+  }
 
   function complete() {
     runtime.complete = true;
