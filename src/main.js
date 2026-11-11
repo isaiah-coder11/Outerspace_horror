@@ -111,6 +111,15 @@ const BACKPACK_SIZE = 4;
 const TOOL_RESTOCK_BASE = 5;
 const storeStockForDay = (day) => Math.max(1, TOOL_RESTOCK_BASE - (day - 1));
 
+// One press per unit, except a cycle task, which takes a press for every
+// state after the first. Restocking below this makes a bay impossible to
+// finish however well the walk is planned.
+function taskPresses(task) {
+  if (!task) return 0;
+  if (task.type === 'cycle') return task.total * Math.max(1, (task.def.states?.length ?? 2) - 1);
+  return task.total;
+}
+
 const WATCHER_LINES = [
   'It is standing at the end of the corridor.',
   'A shape waits between the lights. It does not move.',
@@ -557,12 +566,23 @@ function refreshToolsUI() {
 }
 
 function restockLockers() {
-  const stock = storeStockForDay(state.day);
-  Object.keys(LOCKER_TOOL).forEach((room) => {
-    state.lockers[room] = stock;
+  const base = storeStockForDay(state.day);
+  const required = {};
+
+  // A locker's stock serves the bay that uses its tool, so pair them up
+  // before deciding how much each shelf needs this morning.
+  Object.entries(ROOM_TOOL).forEach(([roomId, toolKey]) => {
+    const presses = taskPresses(state.tasks[roomId]);
+    const lockerRoom = TOOL_META[toolKey].store;
+    required[lockerRoom] = Math.max(required[lockerRoom] ?? 0, presses);
   });
+
+  Object.keys(LOCKER_TOOL).forEach((room) => {
+    state.lockers[room] = Math.max(base, required[room] ?? 0);
+  });
+
   refreshToolsUI();
-  return stock;
+  return { base, min: Math.min(...Object.values(state.lockers)) };
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -745,9 +765,8 @@ const RESERVE_STEP_BUFFER = 2;
 function topUpReserves() {
   const floor = {};
   Object.entries(RESOURCE_FLOW).forEach(([roomId, flow]) => {
-    const task = state.tasks[roomId];
-    const steps = task ? task.total : 0;
-    floor[flow.cost] = Math.max(floor[flow.cost] ?? 0, steps + RESERVE_STEP_BUFFER);
+    const presses = taskPresses(state.tasks[roomId]);
+    floor[flow.cost] = Math.max(floor[flow.cost] ?? 0, presses + RESERVE_STEP_BUFFER);
   });
 
   const released = [];
@@ -1318,14 +1337,7 @@ function startDay(savedTasks = null, options = {}) {
     state.timerWarned = true;
   }
 
-  if (!keepTime) {
-    const stock = restockLockers();
-    if (stock < TOOL_RESTOCK_BASE) {
-      log(`SUPPLY STORES RESTOCKED — ${stock} TOOL${stock === 1 ? '' : 'S'} PER LOCKER.`, stock <= 1 ? 'bad' : 'warn');
-    }
-  } else {
-    refreshToolsUI();
-  }
+  if (keepTime) refreshToolsUI();
 
   if (!keepHarvest) state.harvestedToday = false;
   state.lowEnergyWarned = false;
@@ -1341,6 +1353,18 @@ function startDay(savedTasks = null, options = {}) {
     state.tasks[roomId] = task;
     if (savedDef && saved) task.restore(saved);
   });
+
+  // Restock once the day's tasks exist: the shelves have to cover the
+  // presses they will actually be asked for.
+  if (!keepTime) {
+    const stock = restockLockers();
+    if (stock.min < TOOL_RESTOCK_BASE) {
+      log(
+        `SUPPLY STORES RESTOCKED — WRE ${state.lockers.nav} · FIL ${state.lockers.reactor} · PRO ${state.lockers.med}.`,
+        stock.min <= 1 ? 'bad' : 'warn',
+      );
+    }
+  }
 
   // A fresh shift always gets enough reserve to finish the work in front
   // of it. Resuming a save keeps the tanks as they were.

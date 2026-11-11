@@ -50,10 +50,11 @@ with turns and lateral drift.
   its own; finishing a task pays a bonus of **4**. The panel lists each room's
   cost and payout, and an empty reserve locks its units until the producing bay
   runs again.
-- Each morning the ship tops every reserve up to the step count of the task that
-  burns it, plus **2** — Reactor's steps in BIOMASS, Nav's in POWER, Hydro's in
-  DATA. A shift can always afford its own repairs; anything banked above that
-  floor is what the escape pod and the crack welds come out of.
+- Each morning the ship tops every reserve up to the presses its task will take,
+  plus **2** — Reactor's pressing in BIOMASS, Nav's in POWER, Hydro's in DATA. A
+  cycle task needs two presses per unit, so it asks for twice its unit count. A
+  shift can always afford its own repairs; anything banked above that floor is
+  what the escape pod and the crack welds come out of.
 - Every repair step also needs the right **tool** in your **backpack**: a
   **WRENCH** for Reactor Bay, a **FILTER** for Hydro Bay and a **PROBE** for Nav /
   Comms. Each tool is stocked in a *different* bay's supply locker — the wrench
@@ -65,8 +66,9 @@ with turns and lateral drift.
   unit refuses and nothing is burned, and the pointer switches to the locker that
   stocks it.
 - The lockers **restock every morning with less than the morning before** — 5, 4,
-  3, 2, then 1 tool each. Early shifts can afford a wasted tool; late ones have to
-  plan the walk.
+  3, 2, then 1 tool each — but never below the presses that day's task will
+  actually ask for, and a cycle task takes two presses per unit. Early shifts
+  can afford a wasted tool; late ones still have to plan the walk.
 - Each reserve also shows the **next night's leak** beside its total, and the line
   under the row warns when a bay will be dry or nearly dry by morning — naming
   the compartment that will stall first.
