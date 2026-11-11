@@ -24,10 +24,11 @@ const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 const wait = (ms) => new Promise((resolve) => window.setTimeout(resolve, ms));
 const pick = (list) => list[Math.floor(Math.random() * list.length)];
 
-// The way off the ship. 20 reserves, split so every bay contributes,
-// and the clamps only release on a sound hull.
-const ESCAPE_COST = { power: 7, biomass: 7, data: 6 };
+// The way off the ship. 40 reserves, split so every bay contributes, and
+// the clamps only release after a run of shifts on a sound hull.
+const ESCAPE_COST = { power: 14, biomass: 13, data: 13 };
 const ESCAPE_TOTAL = Object.values(ESCAPE_COST).reduce((sum, value) => sum + value, 0);
+const POD_MIN_SHIFTS = 10;
 
 // The task panel doubles as a locator: a compartment's row points at the
 // bay that produces the reserve that compartment burns.
@@ -97,7 +98,16 @@ const SHIFT_SECONDS = 240;
 // The ship starts flush with reserves. They leak every night from
 // day three, so a station you skip eventually starves the next one.
 const START_RESOURCES = { power: 30, biomass: 30, data: 30 };
-const RESOURCE_DRAIN_BASE = 3;
+
+// The leak follows the shift arc: nothing while the ship is still teaching
+// you, a background hiss through the first cracks, a real squeeze once the
+// novelty is gone, and a losing battle after the second week.
+const RESOURCE_LEAK_TABLE = [0, 0, 0, 0, 2, 3, 4, 5, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
+
+function reserveLeakFor(day) {
+  const index = clamp(Math.floor(day), 0, RESOURCE_LEAK_TABLE.length - 1);
+  return RESOURCE_LEAK_TABLE[index];
+}
 
 // Hull cracks open from this day on. Every crack costs its own severity in
 // ship control each night and widens until somebody welds it shut.
@@ -300,6 +310,8 @@ const state = {
   nextWatcher: 12,
   nextScare: 22,
   nextDoor: 20,
+  firstSighting: false,
+  firstSightingTimer: 0,
   standRoom: null,
   standCooldown: 0,
   ventCooldown: 0,
@@ -701,10 +713,7 @@ function setResourcesUI() {
 // How much every reserve will lose when this shift ends. Tasks finished
 // reduce the hull leak, so the forecast follows task completion.
 function nextNightReserveDrain() {
-  const tasks = Object.values(state.tasks);
-  const allDone = tasks.length === 3 && tasks.every((task) => task && task.complete);
-  const decay = decayFor(state.day, allDone);
-  return decay.grace ? 0 : RESOURCE_DRAIN_BASE + decay.tier * 2;
+  return reserveLeakFor(state.day);
 }
 
 function updateReserveForecast() {
@@ -756,32 +765,6 @@ function updateReserveForecast() {
   reserveForecast.dataset.level = 'ok';
 }
 
-// Every reserve is pushed up to the steps the bay that burns it needs,
-// plus a small buffer for welds and the pod. This is a floor, not a
-// refill: a reserve already above it is left alone, and everything a
-// shift banks on top still counts toward the escape pod.
-const RESERVE_STEP_BUFFER = 2;
-
-function topUpReserves() {
-  const floor = {};
-  Object.entries(RESOURCE_FLOW).forEach(([roomId, flow]) => {
-    const presses = taskPresses(state.tasks[roomId]);
-    floor[flow.cost] = Math.max(floor[flow.cost] ?? 0, presses + RESERVE_STEP_BUFFER);
-  });
-
-  const released = [];
-  Object.entries(floor).forEach(([key, minimum]) => {
-    const current = Math.floor(state.resources[key] ?? 0);
-    if (current >= minimum) return;
-    state.resources[key] = minimum;
-    released.push(`${RESOURCE_META[key].short} ${minimum}`);
-  });
-
-  if (released.length) {
-    log(`RESERVE STORES RELEASED — ${released.join(' · ')}.`, 'warn');
-  }
-}
-
 function canAfford(key, amount = 1) {
   return (state.resources[key] ?? 0) >= amount;
 }
@@ -811,12 +794,24 @@ function lockedResource(key) {
 // ─────────────────────────────────────────────────────────────
 // escape pod
 //
-// The south bay holds the only way off Erebus-9. Assembling the pod
-// costs 20 reserves (7 power, 7 biomass, 6 data), and the clamps will
-// not release while maintenance is unfinished or a crack is open.
+// The south bay holds the only way off Erebus-9. Assembling the pod costs
+// 40 reserves (14 power, 13 biomass, 13 data), and the clamps will not
+// release before six shifts, while maintenance is unfinished, or while a
+// crack is open.
 // ─────────────────────────────────────────────────────────────
 
 function podSealBlocker() {
+  const shifts = Math.max(0, state.day - 1);
+  if (shifts < POD_MIN_SHIFTS) {
+    log(
+      `ESCAPE POD UNBUILT — CLAMPS NEED ${POD_MIN_SHIFTS} SHIFTS OF PRESSURE (${shifts}/${POD_MIN_SHIFTS}).`,
+      'bad',
+    );
+    audio.deny();
+    world.flicker(1.4);
+    return true;
+  }
+
   if (state.life < POD_MIN_SECURITY) {
     log(
       `ESCAPE POD SEALED — HUB SECURITY ${Math.round(state.life)}% (MINIMUM ${POD_MIN_SECURITY}%). RESTORE SHIP CONTROL FIRST.`,
@@ -861,7 +856,9 @@ function refreshEscapePod() {
     ? `Escape pod sealed — hub security ${Math.round(state.life)}% (min ${POD_MIN_SECURITY}%)`
     : state.podBuilt
       ? 'Launch escape pod — leave EREBUS-9'
-      : `Build escape pod — ${ESCAPE_TOTAL} reserves`;
+      : state.day - 1 < POD_MIN_SHIFTS
+        ? `Build escape pod — clamps release after shift ${POD_MIN_SHIFTS}`
+        : `Build escape pod — ${ESCAPE_TOTAL} reserves`;
 
   const entry = waypointEls.get('escape');
   if (entry) entry.nameEl.textContent = state.podBuilt ? 'ESCAPE POD' : 'ESCAPE BAY';
@@ -874,7 +871,7 @@ function buildEscapePod() {
   const missing = podShortfall();
   if (missing.length) {
     log(
-      `ESCAPE POD UNBUILT — NEEDS ${ESCAPE_TOTAL} RESERVES (7 PWR · 7 BIO · 6 DATA). MISSING: ${missing.join(' · ')}.`,
+      `ESCAPE POD UNBUILT — NEEDS ${ESCAPE_TOTAL} RESERVES (${ESCAPE_COST.power} PWR · ${ESCAPE_COST.biomass} BIO · ${ESCAPE_COST.data} DATA). MISSING: ${missing.join(' · ')}.`,
       'bad',
     );
     audio.deny();
@@ -891,7 +888,7 @@ function buildEscapePod() {
   saveProgress();
   audio.success();
   world.flicker(2.2);
-  log('ESCAPE POD ASSEMBLED — 20 RESERVES SPENT. PRESS E AGAIN TO LAUNCH.', 'good');
+  log(`ESCAPE POD ASSEMBLED — ${ESCAPE_TOTAL} RESERVES SPENT. PRESS E AGAIN TO LAUNCH.`, 'good');
 }
 
 async function launchEscapePod() {
@@ -1186,7 +1183,7 @@ function allowedTaskTypes(day) {
 // and unfinished maintenance adds five on top of that.
 function decayFor(day, allDone) {
   const grace = day <= 2;
-  const tier = grace ? 0 : Math.min(5, Math.floor((day - 3) / 3));
+  const tier = grace ? 0 : Math.min(5, Math.floor((day - 3) / 2));
 
   return {
     grace,
@@ -1366,9 +1363,8 @@ function startDay(savedTasks = null, options = {}) {
     }
   }
 
-  // A fresh shift always gets enough reserve to finish the work in front
-  // of it. Resuming a save keeps the tanks as they were.
-  if (!keepTime) topUpReserves();
+  // No morning refill: the tanks only hold what the bays produced and the
+  // night's leak left behind, so a shift has to earn its own repairs.
   setResourcesUI();
 
   dayLabel.textContent = `DAY ${String(state.day).padStart(2, '0')}`;
@@ -1515,11 +1511,12 @@ function resumeGame() {
   refreshToolsUI();
   setResourcesUI();
   state.lowEnergyWarned = false;
-  state.lowHungerWarned = false;
-  state.monsterPhase = 0;
-  state.huntActive = false;
-  state.huntPath = [];
-  state.nextDoor = 24;
+  state.lowHungerWarned = false;    state.monsterPhase = 0;
+    state.huntActive = false;
+    state.huntPath = [];
+    state.firstSighting = false;
+    state.firstSightingTimer = 0;
+    state.nextDoor = 24;
   state.standRoom = null;
   state.standCooldown = 0;
   state.escape = null;
@@ -1625,7 +1622,7 @@ async function runNight() {
   const decay = decayFor(state.day, allDone);
   const crackLoss = crackDamage();
   const drain = decay.grace ? 0 : crackLoss + (allDone ? 0 : 10);
-  const reserveDrain = decay.grace ? 0 : RESOURCE_DRAIN_BASE + decay.tier * 2;
+  const reserveDrain = reserveLeakFor(state.day);
   const before = state.life;
   const after = Math.max(0, before - drain);
 
@@ -1811,11 +1808,12 @@ function restart() {
   setResourcesUI();
   state.harvestedToday = false;
   state.timerWarned = false;
-  state.forcedSleep = false;
-  state.monsterPhase = 0;
-  state.huntActive = false;
-  state.huntPath = [];
-  state.nextDoor = 24;
+  state.forcedSleep = false;    state.monsterPhase = 0;
+    state.huntActive = false;
+    state.huntPath = [];
+    state.firstSighting = false;
+    state.firstSightingTimer = 0;
+    state.nextDoor = 24;
   state.standRoom = null;
   state.standCooldown = 0;
   state.escape = null;
@@ -1852,11 +1850,12 @@ function startGame() {
   setResourcesUI();
   state.harvestedToday = false;
   state.timerWarned = false;
-  state.forcedSleep = false;
-  state.monsterPhase = 0;
-  state.huntActive = false;
-  state.huntPath = [];
-  state.nextDoor = 24;
+  state.forcedSleep = false;    state.monsterPhase = 0;
+    state.huntActive = false;
+    state.huntPath = [];
+    state.firstSighting = false;
+    state.firstSightingTimer = 0;
+    state.nextDoor = 24;
   state.standRoom = null;
   state.standCooldown = 0;
   state.escape = null;
@@ -2862,6 +2861,21 @@ function updateMonster(dt) {
   if (!state.started || state.phase !== 'day' || state.uiBlocking || isPaused()) return;
 
   const phase = state.monsterPhase;
+
+  if (phase === 0) {
+    // The opening nights are quiet, but the ship shows itself once: a
+    // figure at the far end of a corridor, gone when you look again.
+    if (!state.firstSighting && state.day >= 4 && state.day <= 6) {
+      state.firstSightingTimer += dt;
+      if (state.firstSightingTimer > 26) {
+        state.firstSighting = true;
+        world.showWatcher(player.pos);
+        world.flicker(1.2);
+        audio.whisper();
+        log('Something is standing at the end of the corridor. When you look again, it is not.', 'ghostly');
+      }
+    }
+  }
 
   if (phase === 1) {
     // It pops out of a door frame, holds for two seconds, and is gone.

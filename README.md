@@ -50,11 +50,20 @@ with turns and lateral drift.
   its own; finishing a task pays a bonus of **4**. The panel lists each room's
   cost and payout, and an empty reserve locks its units until the producing bay
   runs again.
-- Each morning the ship tops every reserve up to the presses its task will take,
-  plus **2** — Reactor's pressing in BIOMASS, Nav's in POWER, Hydro's in DATA. A
-  cycle task needs two presses per unit, so it asks for twice its unit count. A
-  shift can always afford its own repairs; anything banked above that floor is
-  what the escape pod and the crack welds come out of.
+- There is no morning refill. The tanks hold only what the bays produced and
+  the night's leak left behind, so a shift has to earn the reserves its own
+  repairs burn. What survives that is what the pod and the crack welds come out
+  of.
+- **Nights 1–3** are for learning: no reserve leak at all.
+- **Nights 4–6** the first cracks show and reserves start **−2, −3, −4** a night
+  — noticeable, still comfortable against the roughly four a healthy bay
+  produces.
+- **Nights 7–9** the leak climbs to **−5, −5, −6**. Everything can still be
+  fixed, but there is little left over.
+- **Nights 10–13** it reaches **−7, −8, −9, −10**. Now there are real tradeoffs:
+  weld the crack, run the task, or bank for the pod.
+- **Night 14 and after** the leak is **−11 → −15** a night and the ship is
+  genuinely coming apart.
 - Every repair step also needs the right **tool** in your **backpack**: a
   **WRENCH** for Reactor Bay, a **FILTER** for Hydro Bay and a **PROBE** for Nav /
   Comms. Each tool is stocked in a *different* bay's supply locker — the wrench
@@ -94,9 +103,12 @@ with turns and lateral drift.
 
 South of the central hub, down the south corridor, sits the escape bay: a
 half-built pod on a launch cradle with a build console in front of it.
-Assembling it costs **20 reserves** (7 power, 7 biomass, 6 data) and, once
-built, launching it finishes the run — you leave Erebus-9. The pod stays sealed
-while hub security is below **30%**, so a failing ship cannot be abandoned;
+Assembling it costs **40 reserves** (14 power, 13 biomass, 13 data) and, once
+built, launching it finishes the run — you leave Erebus-9. The clamps stay shut
+until ten shifts have logged hull pressure, so it lands in the late-game
+crack-or-pod tradeoffs rather than the opening week, and
+the pod stays sealed while hub security is below **30%**, so a failing ship
+cannot be abandoned;
 once control is back above 30% the clamps still refuse while any maintenance
 task is unfinished or any hull crack is open. A refusal spends nothing, so the reserves the tasks and welds demand are exactly
 the reserves the pod wants. The bay is always marked with a waypoint.
@@ -151,8 +163,8 @@ to burn, and it does not let go.
 
 From **Day 4** the hull shows hairline cracks. Every night the fractures spread
 and widen, whether or not maintenance was completed. The same leaks eat into the
-compartment reserves — **−3** a night from Day 3, rising with the decay tier — so
-a shift that skips a room eventually strands the room downstream of it.
+compartment reserves — **−2** a night from Day 4, doubling to **−14** by Day 10 —
+so a shift that skips a room eventually strands the room downstream of it.
 
 Tasks are drawn from nine hand-built variations (three per room) and rotate each
 day: activate units in a displayed order, service every unit in a room, or cycle
