@@ -50,6 +50,10 @@ with turns and lateral drift.
   its own; finishing a task pays a bonus of **4**. The panel lists each room's
   cost and payout, and an empty reserve locks its units until the producing bay
   runs again.
+- Each morning the ship tops every reserve up to the step count of the task that
+  burns it, plus **2** — Reactor's steps in BIOMASS, Nav's in POWER, Hydro's in
+  DATA. A shift can always afford its own repairs; anything banked above that
+  floor is what the escape pod and the crack welds come out of.
 - Every repair step also needs the right **tool** in your **backpack**: a
   **WRENCH** for Reactor Bay, a **FILTER** for Hydro Bay and a **PROBE** for Nav /
   Comms. Each tool is stocked in a *different* bay's supply locker — the wrench
@@ -134,10 +138,14 @@ Day 1 uses simple service tasks, Day 2 introduces sequences, and every archetype
 is in rotation from Day 3.
 
 On-screen pointers show every unfinished room through the walls, with the
-distance. Inside a room, the pointers switch to the individual units that still
-need attention; sequence tasks mark only the next unit. When all three rooms are
-done, a pointer marks the cryo pod. Completing a room makes the ship a little
-louder.
+distance. Inside a room, the pointers switch to the individual units that stillneed attention; sequence tasks mark only the next unit. When all three rooms are
+done, a pointer marks the cryo pod. Completing a room makes the ship a
+little louder.
+
+Clicking a compartment's row in the maintenance panel — or pressing `1`, `2` or
+`3` — marks the bay that produces the reserve that compartment burns, so a
+stalled repair points straight at its supply. The row's amber line names both
+(`⌖ BIO · HYDRO`), and the waypoint clears once you walk into that bay.
 
 ## What's inside
 

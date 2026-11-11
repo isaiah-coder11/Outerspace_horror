@@ -33,9 +33,9 @@ export const ROOM_META = {
 // ─────────────────────────────────────────────────────────────
 
 export const RESOURCE_META = {
-  power: { label: 'POWER', short: 'PWR', source: 'REACTOR BAY' },
-  biomass: { label: 'BIOMASS', short: 'BIO', source: 'HYDRO BAY' },
-  data: { label: 'DATA', short: 'DATA', source: 'NAV / COMMS' },
+  power: { label: 'POWER', short: 'PWR', source: 'REACTOR BAY', room: 'reactor' },
+  biomass: { label: 'BIOMASS', short: 'BIO', source: 'HYDRO BAY', room: 'med' },
+  data: { label: 'DATA', short: 'DATA', source: 'NAV / COMMS', room: 'nav' },
 };
 
 export const RESOURCE_FLOW = {

@@ -28,6 +28,11 @@ const pick = (list) => list[Math.floor(Math.random() * list.length)];
 // and the clamps only release on a sound hull.
 const ESCAPE_COST = { power: 7, biomass: 7, data: 6 };
 const ESCAPE_TOTAL = Object.values(ESCAPE_COST).reduce((sum, value) => sum + value, 0);
+
+// The task panel doubles as a locator: a compartment's row points at the
+// bay that produces the reserve that compartment burns.
+const TASK_ROW_KEYS = { reactor: '1', med: '2', nav: '3' };
+const TASK_KEYS = { Digit1: 'reactor', Digit2: 'med', Digit3: 'nav' };
 const POD_MIN_SECURITY = 30;
 
 const ESCAPE_LINES = [
@@ -296,6 +301,7 @@ let lastRoom = null;
 let roomBannerTimer = null;
 let waypointEls = new Map();
 let waypointTimer = 0;
+let reservePointer = null;
 let interactTimer = 0;
 
 // ─────────────────────────────────────────────────────────────
@@ -699,6 +705,33 @@ function updateReserveForecast() {
   reserveForecast.dataset.level = 'ok';
 }
 
+// Every reserve is pushed up to the steps the bay that burns it needs,
+// plus a small buffer for welds and the pod. This is a floor, not a
+// refill: a reserve already above it is left alone, and everything a
+// shift banks on top still counts toward the escape pod.
+const RESERVE_STEP_BUFFER = 2;
+
+function topUpReserves() {
+  const floor = {};
+  Object.entries(RESOURCE_FLOW).forEach(([roomId, flow]) => {
+    const task = state.tasks[roomId];
+    const steps = task ? task.total : 0;
+    floor[flow.cost] = Math.max(floor[flow.cost] ?? 0, steps + RESERVE_STEP_BUFFER);
+  });
+
+  const released = [];
+  Object.entries(floor).forEach(([key, minimum]) => {
+    const current = Math.floor(state.resources[key] ?? 0);
+    if (current >= minimum) return;
+    state.resources[key] = minimum;
+    released.push(`${RESOURCE_META[key].short} ${minimum}`);
+  });
+
+  if (released.length) {
+    log(`RESERVE STORES RELEASED — ${released.join(' · ')}.`, 'warn');
+  }
+}
+
 function canAfford(key, amount = 1) {
   return (state.resources[key] ?? 0) >= amount;
 }
@@ -1046,7 +1079,27 @@ function refreshTasks() {
       toolLine.dataset.level = held ? 'ok' : 'need';
     }
 
-    li.append(head, title, hint, toolLine);
+    const flow = RESOURCE_FLOW[roomId];
+    if (flow) {
+      const meta = RESOURCE_META[flow.cost];
+      const source = document.createElement('div');
+      source.className = 'task-source';
+      source.textContent = `⌖ ${meta.short} · ${ROOM_META[meta.room].short}`;
+
+      li.append(head, title, hint, toolLine, source);
+      li.classList.add('clickable');
+      li.tabIndex = 0;
+      li.setAttribute('role', 'button');
+      li.title = `Waypoint to where ${meta.label} is made — click or press ${TASK_ROW_KEYS[roomId]}`;
+      li.addEventListener('click', () => focusReserve(roomId));
+      li.addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        event.preventDefault();
+        focusReserve(roomId);
+      });
+    } else {
+      li.append(head, title, hint, toolLine);
+    }
     taskList.append(li);
 
     if (task && task.complete) done += 1;
@@ -1162,6 +1215,26 @@ function startTask(roomId, def) {
   return task;
 }
 
+// Clicking a row (or pressing its number) marks the bay that makes the
+// reserve the compartment burns, so a stalled repair points at its supply.
+function focusReserve(roomId) {
+  if (state.phase !== 'day' || state.uiBlocking) return;
+
+  const flow = RESOURCE_FLOW[roomId];
+  if (!flow) return;
+
+  const key = flow.cost;
+  const meta = RESOURCE_META[key];
+  if (!meta || !meta.room || !ROOM_META[meta.room]) return;
+
+  reservePointer = { key, room: meta.room };
+  audio.beep(660, 0.08, 'sine', 0.045);
+  log(
+    `${meta.label} ${Math.floor(state.resources[key] ?? 0)} — WAYPOINT SET TO ${ROOM_META[meta.room].name}.`,
+    'warn',
+  );
+}
+
 function onTaskComplete(task) {
   log(task.def.completeLine, 'good');
   world.flicker(1.6);
@@ -1182,6 +1255,7 @@ function onTaskComplete(task) {
 function startDay(savedTasks = null, options = {}) {
   const { keepTime = false, keepHarvest = false } = options;
 
+  reservePointer = null;
   Object.values(state.tasks).forEach((task) => task && task.dispose && task.dispose());
   state.tasks = {};
   state.phase = 'day';
@@ -1208,17 +1282,6 @@ function startDay(savedTasks = null, options = {}) {
   state.lowEnergyWarned = false;
   state.lowHungerWarned = false;
 
-  // If every reserve is bone dry, the ship releases a token ration
-  // so the shift can still be bootstrapped at all.
-  const dryReserves = Object.keys(START_RESOURCES).every((key) => (state.resources[key] ?? 0) <= 0);
-  if (dryReserves) {
-    Object.keys(START_RESOURCES).forEach((key) => {
-      state.resources[key] = 2;
-    });
-    log('EMERGENCY STORES RELEASED — +2 POWER, BIOMASS, DATA.', 'warn');
-  }
-  setResourcesUI();
-
   ['reactor', 'med', 'nav'].forEach((roomId) => {
     const saved = savedTasks && savedTasks[roomId];
     const savedDef = saved && typeof saved.defId === 'string'
@@ -1229,6 +1292,11 @@ function startDay(savedTasks = null, options = {}) {
     state.tasks[roomId] = task;
     if (savedDef && saved) task.restore(saved);
   });
+
+  // A fresh shift always gets enough reserve to finish the work in front
+  // of it. Resuming a save keeps the tanks as they were.
+  if (!keepTime) topUpReserves();
+  setResourcesUI();
 
   dayLabel.textContent = `DAY ${String(state.day).padStart(2, '0')}`;
   refreshTasks();
@@ -1807,6 +1875,11 @@ window.addEventListener('keydown', (event) => {
 
   if (state.escape && event.code === 'Space') {
     mashEscape();
+    return;
+  }
+
+  if (state.started && state.phase === 'day' && !state.uiBlocking && TASK_KEYS[event.code]) {
+    focusReserve(TASK_KEYS[event.code]);
     return;
   }
 
@@ -2590,6 +2663,7 @@ function buildWaypoints() {
   });
 
   waypointEls.set('pod', createWaypointEntry('pod', 'CRYO POD', '#7fe4ff'));
+  waypointEls.set('reserve', createWaypointEntry('unit', 'RESERVE', '#ffcf8a'));
   waypointEls.set(
     'escape',
     createWaypointEntry('pod', state.podBuilt ? 'ESCAPE POD' : 'ESCAPE BAY', '#a8e6ff'),
@@ -2703,6 +2777,30 @@ function updateWaypoints(dt) {
       false,
     );
   });
+
+  // A clicked task keeps pointing at the bay that makes its reserve
+  // until the player walks into that bay.
+  if (reservePointer) {
+    if (currentRoom === reservePointer.room) {
+      reservePointer = null;
+    } else {
+      const entry = waypointEls.get('reserve');
+      const anchor = ROOM_POINTER_ANCHORS[reservePointer.room];
+      const meta = RESOURCE_META[reservePointer.key];
+
+      if (entry && anchor && meta) {
+        entry.el.classList.add('next');
+        drawWaypoint(
+          entry,
+          { ...anchor, label: `${meta.short} · ${ROOM_META[reservePointer.room].short}` },
+          cameraPos,
+          width,
+          height,
+          false,
+        );
+      }
+    }
+  }
 
   if (['reactor', 'med', 'nav'].includes(currentRoom)) {
     const task = state.tasks[currentRoom];

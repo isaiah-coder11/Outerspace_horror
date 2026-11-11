@@ -272,6 +272,21 @@ body { cursor: default; }
 .task.done .task-progress { color: var(--green); }
 .task.done .task-hint { color: rgba(111, 255, 196, 0.5); }
 
+.task.clickable { cursor: pointer; }
+.task.clickable:hover .task-title { color: #bfe9ff; }
+.task.clickable:focus-visible { outline: 1px solid rgba(127, 228, 255, 0.5); outline-offset: 2px; }
+
+.task-source {
+  margin-top: 1px;
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  color: #ffcf8a;
+  opacity: 0.78;
+  text-transform: uppercase;
+}
+
+.task.done .task-source { color: rgba(111, 255, 196, 0.5); opacity: 0.6; }
+
 .panel-hint {
   display: flex;
   align-items: center;
