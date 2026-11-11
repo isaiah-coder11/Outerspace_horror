@@ -109,12 +109,18 @@ that keep your pace and stop when you do, a shape between the lights, the air
 turning warm and wet for a second.
 
 Vents are worse. Their grates sit over a throat of dark with pale teeth behind
-the slats, and the eyes in them blink at their own pace. Get within a few metres
-and the grate begins to rattle, then the visor fogs red with scanlines while
-something inside breathes. Lean in close and it comes out of the wall: the face
-fills the visor, the screen tears, ship control drops **3%**, and that vent stays
-dark for a while. Standing in a compartment and working a repair also draws
-whispers now — finishing a task does not mean the room has stopped watching.
+the slats, and the eyes in them blink at their own pace. What they do depends on
+how much of the ship you still hold:
+
+| Ship control | Vents |
+| --- | --- |
+| 100–80 | They only watch. The grates stay still and the eyes blink. |
+| 80–50 | The grate rattles as you pass and the visor fogs red with scanlines while something inside breathes. Tense, never a jumpscare. |
+| 50–20 | The jumpscare is real: lean in close and the thing lunges out of the wall. It never costs ship control, so it cannot end the run. |
+| 20–0 | It comes all the way out of a vent, and then it hunts. |
+
+Standing in a compartment and working a repair also draws whispers — finishing a
+task does not mean the room has stopped watching.
 
 ## The thing in the ship
 
@@ -132,9 +138,9 @@ in before the flash takes the screen.
 | Ship control | Behaviour |
 | --- | --- |
 | 100–80 | It lurks out of sight. Eyes blink in the vents and blood dries on the walls. |
-| 80–50 | It pops out of a door frame, stands in it for two seconds, and is gone. |
-| 50–20 | It waits in the corridor without moving. Get within a couple of metres and it grabs you. |
-| 20–0 | It hunts. The chase starts at 1.3 m/s and closes on 3 m/s as the hull dies. |
+| 80–50 | It pops out of a door frame, stands in it for two seconds, and is gone. The vents breathe when you get close. |
+| 50–20 | It waits in the corridor without moving, and the vents start throwing jump scares that cannot kill you. Get within a couple of metres of the lurker and it grabs you. |
+| 20–0 | It pulls itself out of a vent, then hunts. The chase starts at 1.3 m/s and closes on 3 m/s as the hull dies. |
 
 The corridor grab is a struggle: **mash SPACE** to fill the bar inside the
 four-second window. Breaking free burns ten units of whichever reserve you hold

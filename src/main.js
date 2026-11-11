@@ -295,6 +295,8 @@ const state = {
   standCooldown: 0,
   ventCooldown: 0,
   ventEvent: null,
+  ventHuntPending: 0,
+  ventAmbient: 18,
   corridorRoom: null,
   corridorTimer: 0,
   escape: null,
@@ -1298,6 +1300,8 @@ function startDay(savedTasks = null, options = {}) {
   reservePointer = null;
   state.ventEvent = null;
   state.ventCooldown = 0;
+  state.ventHuntPending = 0;
+  state.ventAmbient = 18;
   state.corridorRoom = null;
   state.corridorTimer = 0;
   ventFx.classList.remove('on');
@@ -2217,13 +2221,89 @@ function updateCorridors(dt) {
   }
 }
 
-// Standing near a vent is not safe. It starts to rattle, the visor fogs
-// red, and staying inside arm's reach pulls the thing out of the wall.
+// How hard the vents work on the player, keyed to controlPhase():
+//   100-80  they only watch; the grates do not move
+//   80-50   they breathe while you stand close and fog the visor, and
+//           nothing comes out — tense, never a jumpscare
+//   50-20   a jump scare can land, and it never costs ship control
+//   20-0    the thing pulls itself out of the wall and hunts
+const VENT_COOLDOWNS = [0, 14, 20, 24];
+
+function nearestVentIndex(maxDist = 16) {
+  const vents = world.vents || [];
+  let index = -1;
+  let best = maxDist;
+
+  vents.forEach((vent, i) => {
+    const dist = Math.hypot(vent.x - player.pos.x, vent.z - player.pos.z);
+    if (dist < best) {
+      best = dist;
+      index = i;
+    }
+  });
+
+  return index;
+}
+
+function huntNodeForPoint(x, z) {
+  let best = 'n';
+  let bestDist = Infinity;
+
+  Object.entries(HUNT_WAYPOINTS).forEach(([id, point]) => {
+    const dist = Math.hypot(point.x - x, point.z - z);
+    if (dist < bestDist) {
+      bestDist = dist;
+      best = id;
+    }
+  });
+
+  return best;
+}
+
+// 20-0: it stops lurking in doorways and comes out of the nearest vent.
+function emergeFromVent(index) {
+  const vents = world.vents || [];
+  const vent = vents[index] || vents[0] || null;
+  const at = vent ? (vents[index] ? index : 0) : -1;
+
+  state.ventHuntPending = 0;
+  state.ventEvent = null;
+  state.ventCooldown = 30;
+  ventFx.classList.remove('on');
+
+  if (at >= 0) {
+    world.stirVent(at, 1);
+    world.ventScareAt(at, player.pos, camera);
+  }
+
+  world.flicker(3.4);
+  audio.screech();
+  audio.nightSting();
+  state.shake = Math.max(state.shake, 1);
+
+  scareFlash.classList.remove('flash');
+  void scareFlash.offsetWidth;
+  scareFlash.classList.add('flash');
+  window.setTimeout(() => scareFlash.classList.remove('flash'), 470);
+
+  log('IT CAME OUT OF THE VENT. IT IS COMING AFTER YOU.', 'bad');
+  startHunt(vent ? huntNodeForPoint(vent.x, vent.z) : 'n');
+}
+
 function updateVentHazard(dt) {
   if (!state.started || state.phase !== 'day' || state.uiBlocking || isPaused()) return;
 
+  if (state.ventHuntPending > 0) {
+    state.ventHuntPending -= dt;
+    if (state.ventHuntPending <= 0) {
+      emergeFromVent(nearestVentIndex(18));
+      return;
+    }
+  }
+
   if (state.ventCooldown > 0) state.ventCooldown = Math.max(0, state.ventCooldown - dt);
 
+  const tier = controlPhase();
   const vents = world.vents || [];
   let nearest = null;
   let nearestDist = 6;
@@ -2243,6 +2323,23 @@ function updateVentHazard(dt) {
 
   world.stirVent(nearest.index, clamp(1 - nearest.dist / 6, 0, 1));
 
+  // 80-50: the vents breathe on their own now and then, so a corridor is
+  // never quiet — but nothing comes out of them.
+  if (tier === 1) {
+    state.ventAmbient -= dt;
+    if (state.ventAmbient <= 0) {
+      state.ventAmbient = 26 + Math.random() * 18;
+      const index = nearestVentIndex(9);
+      if (index >= 0) {
+        world.stirVent(index, 0.55);
+        audio.breathe(0.55);
+        if (Math.random() < 0.35) log(pick(VENT_LINES), 'ghostly');
+      }
+    }
+  }
+
+  if (tier === 0) return;
+
   if (state.ventEvent) {
     if (state.ventEvent.index !== nearest.index || nearest.dist > 3.1) {
       state.ventEvent = null;
@@ -2251,14 +2348,15 @@ function updateVentHazard(dt) {
       state.ventEvent.time += dt;
       state.shake = Math.max(state.shake, 0.2 + state.ventEvent.time * 0.12);
 
-      if (nearest.dist < 1.7 && state.ventEvent.time > 0.9) {
+      // Only from 50% down can it actually lunge out.
+      if (tier >= 2 && nearest.dist < 1.7 && state.ventEvent.time > 0.9) {
         burstVent(nearest.index);
         return;
       }
 
-      if (state.ventEvent.time > 3.4) {
+      if (state.ventEvent.time > (tier >= 2 ? 3.4 : 2.6)) {
         state.ventEvent = null;
-        state.ventCooldown = 9;
+        state.ventCooldown = VENT_COOLDOWNS[tier] || 12;
         ventFx.classList.remove('on');
       }
       return;
@@ -2276,15 +2374,17 @@ function updateVentHazard(dt) {
   }
 }
 
+// 50-20: the jumpscare is real, the damage is not. It cannot end the run.
 function burstVent(index) {
   state.ventEvent = null;
-  state.ventCooldown = 26;
+  state.ventCooldown = 20;
   ventFx.classList.remove('on');
 
+  world.stirVent(index, 1);
   world.flicker(3.2);
   world.ventScareAt(index, player.pos, camera);
   audio.screech();
-  audio.nightSting();
+  audio.whisper();
   state.shake = Math.max(state.shake, 0.95);
 
   scareFlash.classList.remove('flash');
@@ -2292,9 +2392,7 @@ function burstVent(index) {
   scareFlash.classList.add('flash');
   window.setTimeout(() => scareFlash.classList.remove('flash'), 470);
 
-  if (state.life > 1) setLife(Math.max(1, state.life - 3));
-
-  log('IT PULLED ITSELF OUT OF THE VENT — HULL CONTROL −3%.', 'bad');
+  log('IT LUNGED OUT OF THE VENT AND WAS GONE. IT DID NOT TAKE YOU — THIS TIME.', 'bad');
 }
 
 function updateAmbient(dt) {
@@ -2460,15 +2558,16 @@ function findHuntPath(from, to) {
   return [from];
 }
 
-function startHunt() {
+function startHunt(spawnNode = 'n') {
   if (state.huntActive) return;
 
   state.huntActive = true;
   state.huntPath = [];
   state.huntPlayerNode = null;
 
-  // It comes out of the north corridor, where the lights are weakest.
-  state.huntNode = 'n';
+  // It comes out of the north corridor, where the lights are weakest —
+  // unless it just pulled itself out of a vent somewhere else.
+  state.huntNode = HUNT_WAYPOINTS[spawnNode] ? spawnNode : 'n';
   const spawn = HUNT_WAYPOINTS[state.huntNode];
   world.hunter.position.set(spawn.x, 0, spawn.z);
   world.setHunterActive(true);
@@ -2713,16 +2812,24 @@ function applyMonsterPhase() {
     state.standRoom = null;
     state.nextWatcher = 999;
     state.nextDoor = 999;
-    startHunt();
+
+    // Below 20% it does not just appear in the corridor: it has to come
+    // out of the vents first, and the gate below times that emergence.
+    if (!state.huntActive && state.ventHuntPending <= 0) {
+      state.ventHuntPending = 1.6;
+      audio.creak();
+    }
   }
 
   if (state.started && phase !== previous) {
     if (phase === 1) {
       log('It keeps appearing in the doorways. It never stays long.', 'bad');
+      log('The vents are breathing louder than they were.', 'ghostly');
     } else if (phase === 2) {
       log('It is standing in the corridor. Do not get close.', 'bad');
+      log('The vents are not closed. They are only shut.', 'bad');
     } else if (phase === 3) {
-      log('SHIP CONTROL CRITICAL. It is no longer hiding — it is hunting you.', 'bad');
+      log('SHIP CONTROL CRITICAL — the vents are opening.', 'bad');
     }
   }
 }
