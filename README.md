@@ -99,6 +99,23 @@ once control is back above 30% the clamps still refuse while any maintenance
 task is unfinished or any hull crack is open. A refusal spends nothing, so the reserves the tasks and welds demand are exactly
 the reserves the pod wants. The bay is always marked with a waypoint.
 
+## Corridors and vents
+
+The corridors are the worst place on the ship. Each one is lit below the
+compartments and lined with red emergency strips that stutter, and cables hang
+low enough to brush the helmet. Walking into one kills a light and pulls a
+creak out of the hull; stay in one and the ship starts working on you — footsteps
+that keep your pace and stop when you do, a shape between the lights, the air
+turning warm and wet for a second.
+
+Vents are worse. Their grates sit over a throat of dark with pale teeth behind
+the slats, and the eyes in them blink at their own pace. Get within a few metres
+and the grate begins to rattle, then the visor fogs red with scanlines while
+something inside breathes. Lean in close and it comes out of the wall: the face
+fills the visor, the screen tears, ship control drops **3%**, and that vent stays
+dark for a while. Standing in a compartment and working a repair also draws
+whispers now — finishing a task does not mean the room has stopped watching.
+
 ## The thing in the ship
 
 The monster escalates with ship control. At night, ship control falls and the

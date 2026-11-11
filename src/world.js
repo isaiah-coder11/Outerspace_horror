@@ -979,15 +979,83 @@ export function createWorld(scene) {
   westPipe2.position.set(-13, 3.08, 2.05);
   root.add(westPipe2);
 
+  // ── corridor dread ────────────────────────────────────────
+  // Each corridor gets emergency strips that stutter at floor and ceiling
+  // level, plus cables hanging low enough to brush the helmet. The light
+  // never sits still in there.
+  const corridorStrips = [];
+  const corridorCables = [];
+
+  const CORRIDOR_RUNS = [
+    { x: 0, z: -13, axis: 'z', length: 11.4 },
+    { x: 13, z: 0, axis: 'x', length: 11.4 },
+    { x: -13, z: 0, axis: 'x', length: 11.4 },
+    { x: 0, z: 13, axis: 'z', length: 11.4 },
+  ];
+
+  CORRIDOR_RUNS.forEach((run) => {
+    [-1, 1].forEach((side) => {
+      const along = run.axis === 'z';
+      const stripMat = new THREE.MeshBasicMaterial({
+        color: 0x310606,
+        transparent: true,
+        opacity: 0.7,
+        fog: true,
+      });
+      addBox(
+        along ? 0.06 : run.length,
+        0.04,
+        along ? run.length : 0.06,
+        along ? run.x + side * 2.32 : run.x,
+        0.075,
+        along ? run.z : run.z + side * 2.32,
+        stripMat,
+      );
+      stripMat.depthWrite = false;
+      corridorStrips.push({ mat: stripMat, seed: Math.random() * 10, upper: false });
+
+      const upperMat = stripMat.clone();
+      upperMat.opacity = 0.24;
+      addBox(
+        along ? 0.05 : run.length,
+        0.03,
+        along ? run.length : 0.05,
+        along ? run.x + side * 2.32 : run.x,
+        3.02,
+        along ? run.z : run.z + side * 2.32,
+        upperMat,
+      );
+      upperMat.depthWrite = false;
+      corridorStrips.push({ mat: upperMat, seed: Math.random() * 10, upper: true });
+    });
+
+    for (let i = 0; i < 5; i += 1) {
+      const cable = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.018, 0.03, 0.7 + Math.random() * 1.2, 5),
+        new THREE.MeshStandardMaterial({ color: 0x090c10, roughness: 1 }),
+      );
+      const offset = -run.length / 2 + 1.4 + i * (run.length / 6);
+      const across = -1.6 + Math.random() * 3.2;
+      cable.position.set(
+        run.axis === 'z' ? run.x + across : run.x + offset,
+        2.66,
+        run.axis === 'z' ? run.z + offset : run.z + across,
+      );
+      cable.rotation.z = (Math.random() - 0.5) * 0.18;
+      root.add(cable);
+      corridorCables.push({ mesh: cable, phase: Math.random() * Math.PI * 2, base: cable.rotation.z });
+    }
+  });
+
   // ── lights ────────────────────────────────────────────────
   addFixture(0, -3.4, 0x9fd8ff, 30, 20, 'x');
-  addFixture(0, -13, 0x7dc6ee, 18, 13, 'x');
-  addFixture(13, 0, 0x7dc6ee, 18, 13, 'z');
-  addFixture(-13, 0, 0x7dc6ee, 18, 13, 'z');
+  addFixture(0, -13, 0x7dc6ee, 11, 11, 'x');
+  addFixture(13, 0, 0x7dc6ee, 11, 11, 'z');
+  addFixture(-13, 0, 0x7dc6ee, 11, 11, 'z');
   addFixture(0, -26, 0xff6a32, 46, 24, 'z');
   addFixture(26, -1.4, 0x7dffc4, 30, 20, 'x');
   addFixture(-26, -0.6, 0x8fa9ff, 30, 20, 'x');
-  addFixture(0, 13, 0x7dc6ee, 16, 13, 'z');
+  addFixture(0, 13, 0x7dc6ee, 10, 11, 'z');
   addFixture(0, 22.4, 0x9fe4ff, 30, 20, 'x');
   addFixture(0, 31.6, 0x9fe4ff, 26, 18, 'x');
 
@@ -1345,14 +1413,30 @@ export function createWorld(scene) {
     vent.rotation.y = spec.ry;
 
     const frame = new THREE.Mesh(
-      new THREE.BoxGeometry(0.64, 0.44, 0.08),
+      new THREE.BoxGeometry(0.74, 0.54, 0.08),
       new THREE.MeshStandardMaterial({ color: 0x080d12, roughness: 0.9, metalness: 0.4 }),
     );
     vent.add(frame);
 
-    const recess = new THREE.Mesh(new THREE.BoxGeometry(0.54, 0.34, 0.03), new THREE.MeshBasicMaterial({ color: 0x000000 }));
-    recess.position.z = 0.045;
+    // The recess does not stop at the wall. It goes back into a throat of
+    // dark, and the dark has something pale inside it.
+    const recess = new THREE.Mesh(
+      new THREE.BoxGeometry(0.62, 0.42, 0.3),
+      new THREE.MeshBasicMaterial({ color: 0x000000 }),
+    );
+    recess.position.z = -0.08;
     vent.add(recess);
+
+    const throatMat = new THREE.MeshBasicMaterial({
+      color: 0x2a0806,
+      transparent: true,
+      opacity: 0.4,
+      depthWrite: false,
+      fog: true,
+    });
+    const throat = new THREE.Mesh(new THREE.PlaneGeometry(0.52, 0.34), throatMat);
+    throat.position.z = 0.02;
+    vent.add(throat);
 
     const eyeMat = new THREE.MeshBasicMaterial({
       color: 0xf5eee4,
@@ -1364,21 +1448,50 @@ export function createWorld(scene) {
 
     [-0.1, 0.1].forEach((x) => {
       const eye = new THREE.Mesh(new THREE.SphereGeometry(0.032, 8, 6), eyeMat);
-      eye.position.set(x, 0, 0.065);
+      eye.position.set(x, 0, 0.075);
       vent.add(eye);
     });
 
-    for (let i = 0; i < 4; i += 1) {
-      const slat = new THREE.Mesh(
-        new THREE.BoxGeometry(0.56, 0.035, 0.035),
-        new THREE.MeshStandardMaterial({ color: 0x1b242c, metalness: 0.7, roughness: 0.4 }),
-      );
-      slat.position.set(0, -0.14 + i * 0.095, 0.11);
-      vent.add(slat);
+    // Teeth behind the grate, only visible once the vent starts to shake.
+    const teethMat = new THREE.MeshBasicMaterial({
+      color: 0xd9cdbd,
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+      fog: true,
+    });
+    const teeth = [];
+    for (let i = 0; i < 5; i += 1) {
+      const tooth = new THREE.Mesh(new THREE.ConeGeometry(0.024, 0.12, 5), teethMat);
+      tooth.position.set(-0.18 + i * 0.09, 0.06, 0.08);
+      tooth.rotation.x = Math.PI;
+      vent.add(tooth);
+      teeth.push(tooth);
     }
 
+    const grate = new THREE.Group();
+    for (let i = 0; i < 4; i += 1) {
+      const slat = new THREE.Mesh(
+        new THREE.BoxGeometry(0.66, 0.04, 0.04),
+        new THREE.MeshStandardMaterial({ color: 0x1b242c, metalness: 0.7, roughness: 0.4 }),
+      );
+      slat.position.set(0, -0.16 + i * 0.1, 0.13);
+      grate.add(slat);
+    }
+    vent.add(grate);
+
     root.add(vent);
-    ventEntries.push({ group: vent, eyeMat, baseOpacity: 0.14, seed: Math.random() * 10 });
+    ventEntries.push({
+      group: vent,
+      eyeMat,
+      teethMat,
+      teeth,
+      grate,
+      throatMat,
+      baseOpacity: 0.14,
+      seed: Math.random() * 10,
+      stir: 0,
+    });
   });
 
   const scareCreature = buildCreature();
@@ -1586,9 +1699,30 @@ export function createWorld(scene) {
     // rotate the nav holo
     holo.rotation.z += dt * 0.05;
 
+    corridorCables.forEach((cable) => {
+      cable.mesh.rotation.z = cable.base + Math.sin(elapsed * 0.55 + cable.phase) * 0.05;
+    });
+
+    corridorStrips.forEach((strip) => {
+      const stutter = Math.sin(elapsed * 11 + strip.seed) > 0.988 ? 0.1 : 1;
+      const breathe = 0.72 + Math.sin(elapsed * 1.25 + strip.seed) * 0.22;
+      strip.mat.opacity = (strip.upper ? 0.26 : 0.7) * breathe * stutter;
+    });
+
     ventEntries.forEach((vent) => {
       const blink = Math.sin(elapsed * 0.7 + vent.seed) > 0.972 ? 0.06 : 1;
       vent.eyeMat.opacity = Math.max(0.04, vent.baseOpacity * blink);
+
+      // A vent near the player starts to shake itself open.
+      vent.stir = Math.max(0, vent.stir - dt * 0.35);
+      const shudder = vent.stir * 0.035;
+      vent.grate.position.x = Math.sin(elapsed * 47 + vent.seed) * shudder;
+      vent.grate.rotation.z = Math.sin(elapsed * 39 + vent.seed) * shudder * 0.8;
+      vent.throatMat.opacity = 0.36 + vent.stir * 0.55;
+      vent.teethMat.opacity = Math.min(0.95, vent.stir * 1.35);
+      vent.teeth.forEach((tooth, index) => {
+        tooth.rotation.x = Math.PI + Math.sin(elapsed * 26 + index) * vent.stir * 0.25;
+      });
     });
 
     if (finalLife > 0) {
@@ -1755,6 +1889,7 @@ export function createWorld(scene) {
     ventEntries.forEach((vent, index) => {
       vent.baseOpacity = 0.2 + dread * 0.8 * (index === 0 ? 1 : 0.85);
       vent.eyeMat.color.setHex(dread > 0.55 ? 0xffd7c2 : 0xf2eee6);
+      vent.throatMat.color.setHex(dread > 0.5 ? 0x410b05 : 0x2a0806);
     });
 
     bloodMats.forEach((material, index) => {
@@ -1791,6 +1926,36 @@ export function createWorld(scene) {
     scareGroup.visible = true;
     scareCreature.head.rotation.set(-0.03, 0, 0.05);
     scareLife = 0.7;
+  }
+
+  // Push the nearest vent into a shudder. main.js calls this every frame
+  // with the closeness of the player, so the slats rattle harder as they
+  // lean in.
+  function stirVent(index, intensity = 1) {
+    const vent = ventEntries[index];
+    if (!vent) return;
+    vent.stir = Math.max(vent.stir || 0, Math.min(1, Math.max(0, intensity)));
+  }
+
+  // The thing comes out of one particular vent instead of the doorway
+  // scare, so the effect lands where the player is standing.
+  function ventScareAt(index, playerPos, camera) {
+    const vent = ventEntries[index];
+    if (!vent) {
+      ventScare(playerPos, camera);
+      return;
+    }
+
+    const origin = new THREE.Vector3(vent.group.position.x, 0, vent.group.position.z);
+    scareOrigin.copy(origin);
+    scareGroup.position.copy(origin);
+    scareGroup.rotation.y = Math.atan2(playerPos.x - origin.x, playerPos.z - origin.z);
+    scareGroup.scale.setScalar(1.2);
+    scareGroup.visible = true;
+    scareCreature.head.rotation.set(-0.03, 0, 0.05);
+    scareCreature.jaw.rotation.x = 0.7;
+    scareLife = 0.85;
+    vent.stir = 1;
   }
 
   function setHunterActive(active) {
@@ -1888,6 +2053,13 @@ export function createWorld(scene) {
     hideGhost,
     pickGhostSpot,
     ventScare,
+    ventScareAt,
+    stirVent,
+    vents: ventEntries.map((vent) => ({
+      x: vent.group.position.x,
+      y: vent.group.position.y,
+      z: vent.group.position.z,
+    })),
     finalScare,
     setCracks,
     setPatches,

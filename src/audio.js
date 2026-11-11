@@ -485,6 +485,37 @@ export class AudioEngine {
     tremLfo.stop(t + 1.3);
   }
 
+  // A wet inhale and a slower exhale: something breathing behind the
+  // vent slats, close enough to fog the visor.
+  breathe(intensity = 1) {
+    if (!this.ready) return;
+    const ctx = this.ctx;
+    const t = ctx.currentTime;
+    const src = ctx.createBufferSource();
+    src.buffer = this.noise;
+    src.loop = true;
+    src.playbackRate.value = 0.5 + Math.random() * 0.22;
+
+    const band = ctx.createBiquadFilter();
+    band.type = 'bandpass';
+    band.frequency.setValueAtTime(230, t);
+    band.frequency.exponentialRampToValueAtTime(880, t + 0.85);
+    band.frequency.exponentialRampToValueAtTime(170, t + 2);
+    band.Q.value = 1.35;
+
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.14 * intensity, t + 0.7);
+    g.gain.exponentialRampToValueAtTime(0.045 * intensity, t + 1.25);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 2.1);
+
+    src.connect(band);
+    band.connect(g);
+    g.connect(this.master);
+    src.start(t);
+    src.stop(t + 2.2);
+  }
+
   nightSting() {
     if (!this.ready) return;
     const ctx = this.ctx;

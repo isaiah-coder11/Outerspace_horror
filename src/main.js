@@ -117,6 +117,30 @@ const WATCHER_LINES = [
   'Something tall is watching from the dark.',
 ];
 
+const CORRIDOR_ROOMS = ['corridorN', 'corridorE', 'corridorW', 'corridorS'];
+
+const CORRIDOR_LINES = [
+  'The corridor is one shade dimmer than it was yesterday.',
+  'Something keeps pace with you past the last fixture, then stops.',
+  'The red strip by your boot is wet. It is not water.',
+  'You can hear the hull breathing. Ships do not breathe.',
+  'The far end of the corridor is further away than the corridor is long.',
+  'A vent cover is lying on the floor. The screws are on the inside.',
+];
+
+const VENT_LINES = [
+  'The vent is breathing. It wants you to lean closer.',
+  'Something behind the slats shifts its weight.',
+  'The grate is warm. Something inside it is alive.',
+];
+
+const TASK_EERIE_LINES = [
+  'The compartment goes quiet — the kind of quiet that is listening.',
+  'Something in the wall taps back, once, in the same rhythm.',
+  'The unit is fixed. The reflection in it is still working.',
+  'The lights hold. The thing in the vent does not.',
+];
+
 // ─────────────────────────────────────────────────────────────
 // DOM
 // ─────────────────────────────────────────────────────────────
@@ -169,6 +193,7 @@ const shiftTimer = $('#shiftTimer');
 const timerValue = $('#timerValue');
 const timerFill = $('#timerFill');
 const scareFlash = $('#scareFlash');
+const ventFx = $('#ventFx');
 const app = $('#app');
 const reserveChips = {
   power: $('#resPower'),
@@ -268,6 +293,10 @@ const state = {
   nextDoor: 20,
   standRoom: null,
   standCooldown: 0,
+  ventCooldown: 0,
+  ventEvent: null,
+  corridorRoom: null,
+  corridorTimer: 0,
   escape: null,
   podBuilt: false,
   cracks: [],
@@ -1199,9 +1228,15 @@ function startTask(roomId, def) {
     needTool: (tool) => needTool(tool),
     gain: (key, amount) => gainResource(key, amount),
     locked: (key) => lockedResource(key),
-    onProgress() {
+    onProgress(task) {
       refreshTasks();
       saveProgress();
+
+      // Working a compartment in the dark does not go unnoticed.
+      if (task && !task.complete && Math.random() < 0.22) {
+        audio.whisper();
+        world.flicker(1.4);
+      }
     },
     onComplete(task) {
       onTaskComplete(task);
@@ -1238,6 +1273,11 @@ function focusReserve(roomId) {
 function onTaskComplete(task) {
   log(task.def.completeLine, 'good');
   world.flicker(1.6);
+  audio.whisper();
+
+  if (Math.random() < 0.45) {
+    window.setTimeout(() => log(pick(TASK_EERIE_LINES), 'ghostly'), 900);
+  }
 
   if (state.phase === 'day' && controlPhase() >= 2 && Math.random() < 0.35) {
     world.showWatcher(player.pos);
@@ -1256,6 +1296,11 @@ function startDay(savedTasks = null, options = {}) {
   const { keepTime = false, keepHarvest = false } = options;
 
   reservePointer = null;
+  state.ventEvent = null;
+  state.ventCooldown = 0;
+  state.corridorRoom = null;
+  state.corridorTimer = 0;
+  ventFx.classList.remove('on');
   Object.values(state.tasks).forEach((task) => task && task.dispose && task.dispose());
   state.tasks = {};
   state.phase = 'day';
@@ -2123,6 +2168,135 @@ function updateInteraction() {
 let eventTimer = 24;
 let heartTimer = 1.5;
 
+// Corridors are never neutral ground: entering one kills a light, and
+// standing in one long enough invites something to share the walk.
+function updateCorridors(dt) {
+  if (!state.started || state.phase !== 'day' || state.uiBlocking || isPaused()) return;
+
+  const room = roomAt(player.pos.x, player.pos.z);
+
+  if (!CORRIDOR_ROOMS.includes(room)) {
+    state.corridorRoom = null;
+    state.corridorTimer = 0;
+    return;
+  }
+
+  if (state.corridorRoom !== room) {
+    state.corridorRoom = room;
+    state.corridorTimer = 5 + Math.random() * 5;
+    audio.creak();
+    world.flicker(1.8);
+    if (Math.random() < 0.55) log(pick(CORRIDOR_LINES), 'ghostly');
+    return;
+  }
+
+  state.corridorTimer -= dt;
+  if (state.corridorTimer > 0) return;
+
+  const pressure = Math.min(1, (100 - state.life) / 100 + state.day * 0.04);
+  state.corridorTimer = 16 - pressure * 8 + Math.random() * 8;
+
+  world.flicker(2.2);
+  audio.whisper();
+
+  const roll = Math.random();
+  if (roll < 0.34) {
+    world.showWatcher(player.pos);
+    log(pick(CORRIDOR_LINES), 'bad');
+  } else if (roll < 0.62) {
+    audio.clunk();
+    audio.step();
+    window.setTimeout(() => audio.step(), 420);
+    log('Footsteps behind you, keeping your pace. They stop when you do.', 'ghostly');
+  } else if (roll < 0.85) {
+    log(pick(CORRIDOR_LINES), 'ghostly');
+  } else {
+    state.shake = Math.max(state.shake, 0.22);
+    audio.breathe(0.8);
+    log('The air in the corridor turns warm and wet, once.', 'bad');
+  }
+}
+
+// Standing near a vent is not safe. It starts to rattle, the visor fogs
+// red, and staying inside arm's reach pulls the thing out of the wall.
+function updateVentHazard(dt) {
+  if (!state.started || state.phase !== 'day' || state.uiBlocking || isPaused()) return;
+
+  if (state.ventCooldown > 0) state.ventCooldown = Math.max(0, state.ventCooldown - dt);
+
+  const vents = world.vents || [];
+  let nearest = null;
+  let nearestDist = 6;
+
+  vents.forEach((vent, index) => {
+    const dist = Math.hypot(vent.x - player.pos.x, vent.z - player.pos.z);
+    if (dist < nearestDist) {
+      nearest = { index, dist };
+      nearestDist = dist;
+    }
+  });
+
+  if (!nearest) {
+    state.ventEvent = null;
+    return;
+  }
+
+  world.stirVent(nearest.index, clamp(1 - nearest.dist / 6, 0, 1));
+
+  if (state.ventEvent) {
+    if (state.ventEvent.index !== nearest.index || nearest.dist > 3.1) {
+      state.ventEvent = null;
+      ventFx.classList.remove('on');
+    } else {
+      state.ventEvent.time += dt;
+      state.shake = Math.max(state.shake, 0.2 + state.ventEvent.time * 0.12);
+
+      if (nearest.dist < 1.7 && state.ventEvent.time > 0.9) {
+        burstVent(nearest.index);
+        return;
+      }
+
+      if (state.ventEvent.time > 3.4) {
+        state.ventEvent = null;
+        state.ventCooldown = 9;
+        ventFx.classList.remove('on');
+      }
+      return;
+    }
+  }
+
+  if (nearest.dist < 2.5 && state.ventCooldown <= 0) {
+    state.ventEvent = { index: nearest.index, time: 0 };
+    ventFx.classList.add('on');
+    audio.breathe(1);
+    audio.whisper();
+    world.flicker(2.6);
+    state.shake = Math.max(state.shake, 0.3);
+    log(pick(VENT_LINES), 'bad');
+  }
+}
+
+function burstVent(index) {
+  state.ventEvent = null;
+  state.ventCooldown = 26;
+  ventFx.classList.remove('on');
+
+  world.flicker(3.2);
+  world.ventScareAt(index, player.pos, camera);
+  audio.screech();
+  audio.nightSting();
+  state.shake = Math.max(state.shake, 0.95);
+
+  scareFlash.classList.remove('flash');
+  void scareFlash.offsetWidth;
+  scareFlash.classList.add('flash');
+  window.setTimeout(() => scareFlash.classList.remove('flash'), 470);
+
+  if (state.life > 1) setLife(Math.max(1, state.life - 3));
+
+  log('IT PULLED ITSELF OUT OF THE VENT — HULL CONTROL −3%.', 'bad');
+}
+
 function updateAmbient(dt) {
   if (!state.started) return;
 
@@ -2879,6 +3053,8 @@ function animate() {
     updateShiftTimer(dt);
     updateEscape(dt);
     updateMonster(dt);
+    updateCorridors(dt);
+    updateVentHazard(dt);
 
     // The hover raycast is the most expensive per-frame query; 16 Hz is
     // indistinguishable from every frame when the camera moves this slowly.
