@@ -1883,10 +1883,10 @@ function startGame() {
   respawnPlayer();
   startDay();
 
-  log('You wake in berth 14 with the siren going. You are a passenger — the crew is gone.', 'bad');
-  log('Keep three bays alive: Reactor north, Hydro east, Nav west. Sleep in the cryo pod.', 'warn');
-  log('Each job needs a tool from another bay. The job list says what to press and why it matters.', 'ghostly');
-  log('Escape bay south. The pod needs 40 reserves and 10 shifts on a sound hull.', 'warn');
+  log('YOUR JOB: repair Reactor, Hydro and Nav each shift, eat daily, build the escape pod.', 'warn');
+  log('Reactor north. Hydro east. Nav west. The job panel says what to press and why.', 'ghostly');
+  log('Sleep in the hub cryo pod to end the shift. Miss a job and ship control falls.', 'bad');
+  log('The pod is south: 40 reserves, 10 shifts, no open cracks.', 'warn');
   beginRedAlert(26);
 
   requestLock();
