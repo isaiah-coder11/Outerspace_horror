@@ -170,6 +170,12 @@ const pauseScreen = $('#pauseScreen');
 const wakeScene = $('#wakeScene');
 const wakeBtn = $('#wakeBtn');
 const alarmWash = $('#alarmWash');
+const tutorialScreen = $('#tutorial');
+const tutTitle = $('#tutTitle');
+const tutText = $('#tutText');
+const tutStepLabel = $('#tutStep');
+const tutNext = $('#tutNext');
+const tutSkip = $('#tutSkip');
 const modal = $('#modal');
 const nightScreen = $('#nightScreen');
 const gameOverScreen = $('#gameOver');
@@ -313,6 +319,7 @@ const state = {
   nextWatcher: 12,
   nextScare: 22,
   nextDoor: 20,
+  nextScurry: 8,
   firstSighting: false,
   firstSightingTimer: 0,
   standRoom: null,
@@ -1346,6 +1353,7 @@ function startDay(savedTasks = null, options = {}) {
   if (keepTime) refreshToolsUI();
 
   if (!keepHarvest) state.harvestedToday = false;
+  if (!keepTime) state.nextScurry = 7 + Math.random() * 9;
   state.lowEnergyWarned = false;
   state.lowHungerWarned = false;
 
@@ -1886,9 +1894,9 @@ function startGame() {
   log('The pod is south: 40 reserves, 10 shifts, no open cracks.', 'warn');
   beginRedAlert(26);
 
-  requestLock();
+  showTutorial();
   window.setTimeout(() => {
-    if (state.started && !document.pointerLockElement) {
+    if (state.started && !state.uiBlocking && !document.pointerLockElement) {
       log('Pointer lock unavailable — hold left click and drag to look.', 'warn');
     }
   }, 1400);
@@ -2008,6 +2016,104 @@ pauseScreenEl.addEventListener('click', () => {
   hidePause();
   requestLock();
 });
+
+// ─────────────────────────────────────────────────────────────
+// orientation tutorial
+//
+// Six cards shown once, at the top of a new run. Each card highlights its
+// room on a schematic so a first-time passenger knows which corridor leads
+// where before the shift clock starts eating the day.
+// ─────────────────────────────────────────────────────────────
+
+const TUTORIAL_STEPS = [
+  {
+    loc: 'hub',
+    title: 'YOU ARE HERE — THE HUB',
+    text: 'Berth 14 sits at the centre of Erebus-9. The cryo pod behind you ends a shift, and the three corridors lead to the three bays that keep the ship alive.',
+  },
+  {
+    loc: 'reactor',
+    title: 'REACTOR BAY — NORTH',
+    text: 'Up the north corridor. It makes POWER and burns BIOMASS. The wrench its work needs is stocked in Nav\'s antenna rack, so every job is a walk across the ship.',
+  },
+  {
+    loc: 'med',
+    title: 'HYDRO BAY — EAST',
+    text: 'Down the east corridor. Food grows here — harvest one meal per shift. It makes BIOMASS, and its filters are stocked in Reactor\'s coolant locker.',
+  },
+  {
+    loc: 'nav',
+    title: 'NAV / COMMS — WEST',
+    text: 'Down the west corridor. It turns POWER into DATA and holds the escape telemetry. Its probes are stocked in Hydro\'s cabinet.',
+  },
+  {
+    loc: 'escape',
+    title: 'ESCAPE BAY — SOUTH',
+    text: 'The pod waits at the end of the south corridor: 40 reserves, ten shifts logged, and a hull with no open cracks. That is the way off Erebus-9.',
+  },
+  {
+    loc: 'panel',
+    title: 'THE JOB PANEL — TOP LEFT',
+    text: 'Each job says why it matters, what to press, and which tool and reserve it needs. Click a job — or press 1, 2 or 3 — to mark the bay that supplies it.',
+  },
+];
+
+let tutStep = 0;
+
+function renderTutStep() {
+  const step = TUTORIAL_STEPS[tutStep];
+  if (!step || !tutorialScreen) return;
+
+  tutTitle.textContent = step.title;
+  tutText.textContent = step.text;
+  tutStepLabel.textContent = `${tutStep + 1} / ${TUTORIAL_STEPS.length}`;
+  tutNext.textContent = tutStep === TUTORIAL_STEPS.length - 1 ? 'START SHIFT' : 'NEXT';
+
+  tutorialScreen.querySelectorAll('.ship-map .cell').forEach((cell) => {
+    cell.classList.toggle('active', cell.dataset.loc === step.loc);
+  });
+  // The panel card dims the backdrop so the real job panel can be seen
+  // behind it while its outline pulses.
+  tutorialScreen.classList.toggle('panel-step', step.loc === 'panel');
+  taskPanel.classList.toggle('tut-highlight', step.loc === 'panel');
+}
+
+function showTutorial() {
+  if (!tutorialScreen) {
+    requestLock();
+    return;
+  }
+
+  tutStep = 0;
+  state.uiBlocking = 'tutorial';
+  tutorialScreen.classList.remove('hidden');
+  renderTutStep();
+  setHovered(null);
+
+  if (document.pointerLockElement) document.exitPointerLock();
+}
+
+function nextTutorial() {
+  if (tutStep < TUTORIAL_STEPS.length - 1) {
+    tutStep += 1;
+    renderTutStep();
+    audio.beep(520, 0.06, 'sine', 0.03);
+    return;
+  }
+  endTutorial();
+}
+
+function endTutorial() {
+  tutorialScreen.classList.add('hidden');
+  tutorialScreen.classList.remove('panel-step');
+  taskPanel.classList.remove('tut-highlight');
+  if (state.uiBlocking === 'tutorial') state.uiBlocking = null;
+  audio.success();
+  requestLock();
+}
+
+if (tutNext) tutNext.addEventListener('click', nextTutorial);
+if (tutSkip) tutSkip.addEventListener('click', endTutorial);
 
 // The pod opens first: siren, red strobe, and the realisation that the
 // person waking up is a passenger, not crew.
@@ -2276,6 +2382,28 @@ function updateCorridors(dt) {
     state.shake = Math.max(state.shake, 0.22);
     audio.breathe(0.8);
     log('The air in the corridor turns warm and wet, once.', 'bad');
+  }
+}
+
+// Something small lives in the walls. It moves when the ship is quiet,
+// more often as control falls, and it is always just out of sight.
+function updateScurry(dt) {
+  if (!state.started || state.phase !== 'day' || state.uiBlocking || isPaused()) return;
+
+  state.nextScurry -= dt;
+  if (state.nextScurry > 0) return;
+
+  const pressure = 1 - state.life / 100;
+  state.nextScurry = 9 + Math.random() * 15 - pressure * 4;
+
+  const room = roomAt(player.pos.x, player.pos.z);
+  const inCorridor = CORRIDOR_ROOMS.includes(room);
+  const pan = Math.random() * 2 - 1;
+
+  audio.scurry(pan, inCorridor ? 0.085 : 0.03 + Math.random() * 0.02);
+
+  if (inCorridor && Math.random() < 0.35) {
+    log('Something small skitters along the wall behind you.', 'ghostly');
   }
 }
 
@@ -3234,6 +3362,7 @@ function animate() {
     updateEscape(dt);
     updateMonster(dt);
     updateCorridors(dt);
+    updateScurry(dt);
     updateVentHazard(dt);
 
     // The hover raycast is the most expensive per-frame query; 16 Hz is

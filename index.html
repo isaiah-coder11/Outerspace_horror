@@ -191,6 +191,31 @@
         </div>
       </div>
 
+      <!-- ───────────────────── ORIENTATION ───────────────────── -->
+      <div id="tutorial" class="overlay hidden">
+        <div class="tutorial-box">
+          <p class="eyebrow">ORIENTATION · BERTH 14</p>
+          <h2 id="tutTitle">YOU ARE HERE</h2>
+          <p id="tutText" class="tut-text"></p>
+
+          <div class="ship-map" aria-hidden="true">
+            <div class="cell reactor" data-loc="reactor"><span>REACTOR</span><i>NORTH · 26 m</i></div>
+            <div class="cell nav" data-loc="nav"><span>NAV</span><i>WEST · 26 m</i></div>
+            <div class="cell hub" data-loc="hub"><span>HUB</span><i>YOU</i></div>
+            <div class="cell med" data-loc="med"><span>HYDRO</span><i>EAST · 26 m</i></div>
+            <div class="cell escape" data-loc="escape"><span>ESCAPE</span><i>SOUTH · 28 m</i></div>
+          </div>
+
+          <div class="tut-foot">
+            <span id="tutStep" class="tut-step">1 / 6</span>
+            <div class="tut-actions">
+              <button id="tutSkip" class="reset-link" type="button">Skip</button>
+              <button id="tutNext" class="btn" type="button">NEXT</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- ─────────────────────── PAUSE ─────────────────────── -->
       <div id="pauseScreen" class="overlay hidden">
         <div class="pause-inner">

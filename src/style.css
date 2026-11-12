@@ -1568,3 +1568,134 @@ kbd {
 @media (max-height: 780px) {
   #taskPanel { max-height: calc(100vh - 258px); }
 }
+
+/* ───────────────────── orientation tutorial ───────────────────── */
+
+#tutorial {
+  z-index: 45;
+  background: rgba(1, 4, 6, 0.9);
+}
+
+.tutorial-box {
+  width: min(560px, 92vw);
+  padding: 26px 28px 22px;
+  display: grid;
+  gap: 13px;
+  justify-items: center;
+  text-align: center;
+  background: rgba(4, 11, 16, 0.96);
+  border: 1px solid rgba(127, 228, 255, 0.22);
+  border-top: 2px solid rgba(127, 228, 255, 0.55);
+  box-shadow: 0 0 90px rgba(20, 90, 120, 0.22), 0 30px 80px rgba(0, 0, 0, 0.7);
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 20px), calc(100% - 20px) 100%, 0 100%);
+}
+
+.tutorial-box h2 {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 400;
+  letter-spacing: 0.2em;
+  text-indent: 0.2em;
+  color: #e8f6ff;
+}
+
+.tut-text {
+  margin: 0;
+  max-width: 430px;
+  font-size: 11.5px;
+  line-height: 1.8;
+  letter-spacing: 0.07em;
+  color: rgba(200, 224, 238, 0.8);
+}
+
+.ship-map {
+  display: grid;
+  grid-template-columns: repeat(3, 84px);
+  grid-template-rows: repeat(3, 42px);
+  gap: 8px;
+  margin: 4px auto;
+}
+
+.ship-map .cell {
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 1px;
+  border: 1px solid rgba(127, 228, 255, 0.18);
+  background: rgba(8, 18, 26, 0.7);
+}
+
+.ship-map .cell span {
+  font-size: 8.5px;
+  letter-spacing: 0.18em;
+  color: rgba(200, 224, 238, 0.7);
+}
+
+.ship-map .cell i {
+  font-style: normal;
+  font-size: 7.5px;
+  letter-spacing: 0.08em;
+  color: rgba(127, 228, 255, 0.45);
+}
+
+.ship-map .reactor { grid-area: 1 / 2; }
+.ship-map .nav { grid-area: 2 / 1; }
+.ship-map .hub { grid-area: 2 / 2; }
+.ship-map .med { grid-area: 2 / 3; }
+.ship-map .escape { grid-area: 3 / 2; }
+
+.ship-map .cell.active {
+  border-color: rgba(255, 207, 138, 0.9);
+  background: rgba(62, 41, 16, 0.55);
+  box-shadow: inset 0 0 18px rgba(255, 180, 90, 0.22);
+}
+
+.ship-map .cell.active span { color: #ffd9a3; }
+.ship-map .cell.active i { color: rgba(255, 207, 138, 0.8); }
+
+.tut-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  gap: 16px;
+  margin-top: 2px;
+  padding-top: 14px;
+  border-top: 1px dashed rgba(127, 228, 255, 0.16);
+}
+
+.tut-step {
+  font-size: 9px;
+  letter-spacing: 0.22em;
+  color: rgba(127, 228, 255, 0.6);
+}
+
+.tut-actions { display: flex; align-items: center; gap: 16px; }
+.tut-actions .btn { margin-top: 0; padding: 11px 26px; font-size: 10.5px; }
+
+#taskPanel.tut-highlight {
+  outline: 1px solid rgba(255, 207, 138, 0.8);
+  box-shadow: 0 0 30px rgba(255, 180, 90, 0.16), 0 18px 50px rgba(0, 0, 0, 0.5);
+  animation: tut-panel 1.7s ease-in-out infinite;
+}
+
+@keyframes tut-panel {
+  0%, 100% { outline-color: rgba(255, 207, 138, 0.3); }
+  50% { outline-color: rgba(255, 207, 138, 0.95); }
+}
+
+@media (max-height: 640px) {
+  .ship-map { grid-template-rows: repeat(3, 32px); }
+  .tutorial-box { padding: 18px 20px 16px; gap: 10px; }
+  .tutorial-box h2 { font-size: 16px; }
+}
+
+/* the job-panel step lets the real panel show through */
+#tutorial.panel-step { background: rgba(1, 4, 6, 0.35); }
+
+/* on a wide screen the panel step moves the card aside so the real panel
+   is fully visible while it pulses */
+@media (min-width: 900px) {
+  #tutorial.panel-step { place-items: center end; padding-right: 40px; }
+  #tutorial.panel-step .tutorial-box { width: min(420px, 42vw); }
+}

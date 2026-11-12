@@ -243,6 +243,47 @@ export class AudioEngine {
     lfo.stop(t + dur + 0.1);
   }
 
+  // Small feet crossing a grate: a scatter of high, dry ticks that fade as
+  // the thing moves away. Pan is -1 (left) to 1 (right).
+  scurry(pan = 0, volume = 0.05) {
+    if (!this.ready) return;
+    const ctx = this.ctx;
+    const start = ctx.currentTime + 0.02;
+
+    let dest = this.master;
+    if (ctx.createStereoPanner) {
+      const panner = ctx.createStereoPanner();
+      panner.pan.value = Math.max(-1, Math.min(1, pan));
+      panner.connect(this.master);
+      dest = panner;
+    }
+
+    const steps = 5 + Math.floor(Math.random() * 5);
+    for (let i = 0; i < steps; i += 1) {
+      const t = start + i * (0.045 + Math.random() * 0.05);
+      const src = ctx.createBufferSource();
+      src.buffer = this.noise;
+      src.playbackRate.value = 0.8 + Math.random() * 0.9;
+
+      const hp = ctx.createBiquadFilter();
+      hp.type = 'highpass';
+      hp.frequency.value = 1600 + Math.random() * 1800;
+
+      const g = ctx.createGain();
+      const fade = 1 - i / (steps * 1.5);
+      const peak = Math.max(0.0002, volume * (0.5 + Math.random() * 0.7) * fade);
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(peak, t + 0.006);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.05 + Math.random() * 0.04);
+
+      src.connect(hp);
+      hp.connect(g);
+      g.connect(dest);
+      src.start(t);
+      src.stop(t + 0.14);
+    }
+  }
+
   creak() {
     if (!this.ready) return;
     const ctx = this.ctx;
