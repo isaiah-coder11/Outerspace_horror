@@ -3120,11 +3120,6 @@ function buildWaypoints() {
   waypointsLayer.replaceChildren();
 
   ['reactor', 'med', 'nav'].forEach((roomId) => {
-    const meta = ROOM_META[roomId];
-    waypointEls.set(`room:${roomId}`, createWaypointEntry('room', meta.short, meta.tint));
-  });
-
-  ['reactor', 'med', 'nav'].forEach((roomId) => {
     const task = state.tasks[roomId];
     if (!task || typeof task.getTargets !== 'function') return;
 
@@ -3192,7 +3187,18 @@ function drawWaypoint(entry, target, cameraPos, width, height, isPod) {
     entry.el.style.setProperty('--angle', `${angle}rad`);
   }
 
-  entry.el.style.left = `${clamp(sx, 50, width - 50)}px`;
+  // The job panel covers the left of the screen; a task marker hiding
+  // behind it is the same as no marker at all.
+  let minX = 50;
+  if (taskPanel) {
+    const panelRect = taskPanel.getBoundingClientRect();
+    const panelVisible = panelRect.width > 0 && panelRect.height > 0;
+    if (panelVisible && sy > panelRect.top - 24 && sy < panelRect.bottom + 24) {
+      minX = panelRect.right + 46;
+    }
+  }
+
+  entry.el.style.left = `${clamp(sx, minX, width - 50)}px`;
   entry.el.style.top = `${clamp(sy, 118, height - 88)}px`;
   entry.el.style.display = 'flex';
   entry.el.classList.toggle('edge', edge);
@@ -3232,15 +3238,57 @@ function updateWaypoints(dt) {
 
   if (!active) return;
 
+  // From outside a bay the pointer aims at the actual unit that still
+  // needs work — the next one in a sequence, the nearest one otherwise —
+  // not at the bay's centre. The walk is to a thing, not a room.
   ['reactor', 'med', 'nav'].forEach((roomId) => {
     const task = state.tasks[roomId];
     if (!task || task.complete || currentRoom === roomId) return;
+    if (typeof task.getTargets !== 'function') return;
 
-    const entry = waypointEls.get(`room:${roomId}`);
+    const meta = ROOM_META[roomId];
+    const toolKey = ROOM_TOOL[roomId];
+
+    // No tool, no work: send the player to the locker that stocks it.
+    if (toolKey && !hasTool(toolKey)) {
+      const storeRoom = TOOL_META[toolKey].store;
+      const storeEntry = waypointEls.get(`store:${storeRoom}`);
+      const storeAnchor = STORE_ANCHORS[storeRoom];
+
+      if (storeEntry && storeAnchor) {
+        storeEntry.el.classList.add('next');
+        drawWaypoint(
+          storeEntry,
+          { ...storeAnchor, label: `${TOOL_META[toolKey].label} · ${ROOM_META[storeRoom].short}` },
+          cameraPos,
+          width,
+          height,
+          false,
+        );
+      }
+      return;
+    }
+
+    const pending = task.getTargets().filter((target) => target.active);
+    if (!pending.length) return;
+
+    const nearest = pending.reduce((best, target) => {
+      const distance = cameraPos.distanceTo(new THREE.Vector3(target.x, target.y, target.z));
+      return !best || distance < best.distance ? { target, distance } : best;
+    }, null);
+
+    const entry = waypointEls.get(`${roomId}:${nearest.target.index}`);
     if (!entry) return;
 
-    const anchor = ROOM_POINTER_ANCHORS[roomId];
-    drawWaypoint(entry, { ...anchor, label: ROOM_META[roomId].short }, cameraPos, width, height, false);
+    entry.el.classList.add('next');
+    drawWaypoint(
+      entry,
+      { ...nearest.target, label: `${meta.short} · ${nearest.target.unit ?? nearest.target.label}` },
+      cameraPos,
+      width,
+      height,
+      false,
+    );
   });
 
   // An open crack is always marked, in whatever room it opened.

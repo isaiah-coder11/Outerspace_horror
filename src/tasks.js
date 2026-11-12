@@ -953,6 +953,9 @@ export function buildTask(def, roomId, api) {
       y: 2.12,
       z: item.holder.position.z,
       label,
+      // The unit's fixed identity paint ("2", "A", or its number), which
+      // stays readable outside the bay where its state word would not.
+      unit: def.labels?.[item.index] ?? String(item.index + 1),
       active,
     };
   });
