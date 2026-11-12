@@ -1114,15 +1114,12 @@ function refreshTasks() {
     const hint = document.createElement('div');
     hint.className = 'task-hint';
     if (task && !task.complete && RESOURCE_FLOW[roomId]) {
+      // The task hint already carries the sequence order or the cycle count,
+      // so only the reserve cost is added here.
       const flow = RESOURCE_FLOW[roomId];
-      const order = task.def.type === 'sequence' && Array.isArray(task.sequence)
-        ? ` · ORDER ${task.sequence.map((n) => n + 1).join(' → ')}`
-        : task.def.type === 'cycle'
-          ? ' · TWO PRESSES EACH'
-          : '';
-      hint.textContent = `${task.hint}${order} · −1 ${RESOURCE_META[flow.cost].short} / +1 ${RESOURCE_META[flow.yields].short} PER PRESS`;
+      hint.textContent = `${task.hint} · −1 ${RESOURCE_META[flow.cost].short} / +1 ${RESOURCE_META[flow.yields].short} PER PRESS`;
     } else {
-      hint.textContent = task ? task.hint : '';
+      hint.textContent = '';
     }
 
     const toolKey = ROOM_TOOL[roomId];
@@ -1883,7 +1880,7 @@ function startGame() {
   respawnPlayer();
   startDay();
 
-  log('YOUR JOB: repair Reactor, Hydro and Nav each shift, eat daily, build the escape pod.', 'warn');
+  log('Shift 1. Three jobs on the board — Reactor, then Hydro, then Nav.', 'warn');
   log('Reactor north. Hydro east. Nav west. The job panel says what to press and why.', 'ghostly');
   log('Sleep in the hub cryo pod to end the shift. Miss a job and ship control falls.', 'bad');
   log('The pod is south: 40 reserves, 10 shifts, no open cracks.', 'warn');

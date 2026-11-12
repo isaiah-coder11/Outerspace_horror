@@ -1545,3 +1545,26 @@ kbd {
 @media (max-height: 780px) {
   #taskPanel { max-height: calc(100vh - 232px); }
 }
+
+/* short windows: let the briefing scroll instead of clipping its button */
+.overlay { overflow-y: auto; }
+
+@media (max-height: 720px) {
+  #startScreen { align-items: start; padding: 18px 32px; }
+  #startScreen .start-inner { margin: auto; gap: 12px; }
+  #startScreen .title { font-size: clamp(44px, 8vw, 84px); }
+  #startScreen .rules { gap: 8px; }
+  #startScreen .rule { padding: 9px 10px; }
+  #startScreen .footnote { display: none; }
+  #startScreen .lede { font-size: 11.5px; line-height: 1.75; }
+}
+
+/* panel height includes its padding and always clears the log */
+#taskPanel {
+  box-sizing: border-box;
+  max-height: calc(100vh - 270px);
+}
+
+@media (max-height: 780px) {
+  #taskPanel { max-height: calc(100vh - 258px); }
+}
