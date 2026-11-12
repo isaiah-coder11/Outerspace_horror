@@ -2,9 +2,10 @@
 
 A short first-person horror maintenance game built with Three.js and Vite.
 
-You are the last caretaker of the derelict salvage vessel **EREBUS-9**. Each day,
-three compartments fail in different ways. Fix them before you seal yourself in
-the cryo pod. At night, ship control falls — and the hull never stops cracking.
+You are a **passenger** on the liner **EREBUS-9**, woken mid-crossing by the
+emergency klaxon. The crew is gone. Three compartments still fail every day, and
+the only way off the ship is to keep the hull together long enough to build the
+escape pod. At night, ship control falls — and the hull never stops cracking.
 
 ## Run it
 
@@ -30,6 +31,18 @@ Requires a browser with WebGL and a mouse + keyboard.
 The suit has mass. Movement accelerates and coasts instead of starting and
 stopping instantly, the helmet view eases toward your mouse, and the camera leans
 with turns and lateral drift.
+
+## The opening
+
+The run starts inside your cryo pod: a red strobe, the siren, the words
+`PASSENGER CRYO · BERTH 14`, and a single `OPEN THE POD` control. The wake
+screen says who you are before it says how to play — you paid for a berth, you
+are not crew, and nobody is answering the hail.
+
+Opening the pod starts the first shift under **red alert**: a pulsing red wash
+over the visor, a klaxon every couple of seconds, and a ship log that tells you
+the crew is gone. The alarm fades after roughly half a minute and the rest of
+the run is the quieter, worse kind of failure.
 
 ## Rules
 
@@ -105,13 +118,14 @@ South of the central hub, down the south corridor, sits the escape bay: a
 half-built pod on a launch cradle with a build console in front of it.
 Assembling it costs **40 reserves** (14 power, 13 biomass, 13 data) and, once
 built, launching it finishes the run — you leave Erebus-9. The clamps stay shut
-until ten shifts have logged hull pressure, so it lands in the late-game
-crack-or-pod tradeoffs rather than the opening week, and
-the pod stays sealed while hub security is below **30%**, so a failing ship
-cannot be abandoned;
-once control is back above 30% the clamps still refuse while any maintenance
-task is unfinished or any hull crack is open. A refusal spends nothing, so the reserves the tasks and welds demand are exactly
-the reserves the pod wants. The bay is always marked with a waypoint.
+until **ten shifts** have logged hull pressure, so it cannot be a first-day win
+and lands in the late-game choice between welds, jobs and saving.
+
+The pod also stays sealed while hub security is below **30%**, so a failing ship
+cannot be abandoned. Once control is back above 30%, the clamps still refuse
+while any job is unfinished or any hull crack is open. A refusal spends nothing,
+so the reserves the jobs and welds demand are exactly the reserves the pod wants.
+The bay is always marked with a waypoint.
 
 ## Corridors and vents
 
@@ -161,10 +175,11 @@ four-second window. Breaking free burns ten units of whichever reserve you hold
 most of — power, biomass or data. With every reserve at zero there is nothing
 to burn, and it does not let go.
 
-From **Day 4** the hull shows hairline cracks. Every night the fractures spread
-and widen, whether or not maintenance was completed. The same leaks eat into the
-compartment reserves — **−2** a night from Day 4, doubling to **−14** by Day 10 —
-so a shift that skips a room eventually strands the room downstream of it.
+From **Day 5** the hull opens hairline cracks. Every night the fractures spread
+and widen, whether or not the jobs were finished. The same leaks eat into the
+compartment reserves — **−2** a night from Day 4, climbing to **−7** by Day 10
+and **−14** by Day 17 — so a shift that skips a room eventually strands the room
+downstream of it.
 
 Tasks are drawn from nine hand-built variations (three per room) and rotate each
 day: activate units in a displayed order, service every unit in a room, or cycle
@@ -179,10 +194,28 @@ distance. Inside a room, the pointers switch to the individual units that stilln
 done, a pointer marks the cryo pod. Completing a room makes the ship a
 little louder.
 
-Clicking a compartment's row in the maintenance panel — or pressing `1`, `2` or
-`3` — marks the bay that produces the reserve that compartment burns, so a
+Clicking a compartment's row in the **Today's jobs** panel — or pressing `1`, `2`
+or `3` — marks the bay that produces the reserve that compartment burns, so a
 stalled repair points straight at its supply. The row's amber line names both
-(`⌖ BIO · HYDRO`), and the waypoint clears once you walk into that bay.
+(`⌖ GET BIO FROM HYDRO — CLICK TO MARK IT`), and the waypoint clears once you
+walk into that bay.
+
+## Today's jobs
+
+Every row in the panel states the job, **why the ship needs it**, exactly what to
+press, the tool and locker it wants, and the reserve it burns. The nine jobs are:
+
+| Bay | Job | Why the ship needs it |
+| --- | --- | --- |
+| Reactor | **Reroute the power conduits** | Press the three conduits in the shown order; the route is arcing and POWER cannot flow through it. |
+| Reactor | **Close the coolant valves** | Press all four valves; the core is venting coolant and cannot hold pressure. |
+| Reactor | **Seat the control rods** | Two presses per rod until it reads SEATED; the core runs hot until all three are down. |
+| Hydro | **Pick the growth pods** | Press all three pods; they are your food and the ship's BIOMASS. |
+| Hydro | **Clean the nutrient lines** | Two presses per line until CLEAN; dirty lines poison the crop and stop BIOMASS. |
+| Hydro | **Pollinate the trays** | Press the trays in the shown order; without pollination the crop never sets. |
+| Nav | **Point the antennas** | Press the dishes in the shown order; with the array down the ship is flying blind. |
+| Nav | **Read the drift sensors** | Press all three sensors; the ship does not know where it is. |
+| Nav | **Lock the transmission** | Two presses per console until LOCKED; a locked signal is the only way NAV makes DATA. |
 
 ## What's inside
 
@@ -193,9 +226,9 @@ stalled repair points straight at its supply. The row's amber line names both
   cracks, vent eyes, blood decals, the watching apparition and the hunter.
 - `src/tasks.js` — item meshes, the nine tasks and task runtime logic.
 - `src/audio.js` — fully procedural WebAudio ambience (drone, wind, whispers,
-  creaks, interface tones, heartbeat); no audio files.
-- `src/style.css` — HUD, title screen, night sequence, end-shift dialog and
-  game-over overlays.
+  creaks, the wake klaxon, interface tones, heartbeat); no audio files.
+- `src/style.css` — HUD, wake screen, red-alert wash, night sequence, end-shift
+  dialog and game-over overlays.
 
 There are no image, model or audio assets: every texture and sound is generated
 at runtime.
