@@ -327,7 +327,8 @@ function makeCommsConsole(states) {
 const REACTOR_CONDUITS = {
   id: 'reactor-conduits',
   title: 'Reroute the power conduits',
-  hint: 'Press them in the order shown.',
+  hint: 'Press E on the conduits in the order the panel shows.',
+  why: 'Arcing conduits break the power route, and the reactor cannot make POWER through a broken route.',
   type: 'sequence',
   spots: [
     { x: -7.2, z: -21.0, ry: 0 },
@@ -343,8 +344,9 @@ const REACTOR_CONDUITS = {
 
 const REACTOR_COOLANT = {
   id: 'reactor-coolant',
-  title: 'Seal the coolant leaks',
-  hint: 'Seal all four valves.',
+  title: 'Close the coolant valves',
+  hint: 'Press E on all four valves.',
+  why: 'The core is venting coolant. Without it the reactor cannot hold pressure or make POWER.',
   type: 'count',
   spots: [
     { x: -8.2, z: -24.0, ry: 0.25 },
@@ -362,7 +364,8 @@ const REACTOR_COOLANT = {
 const REACTOR_RODS = {
   id: 'reactor-rods',
   title: 'Seat the control rods',
-  hint: 'Cycle each rod down to SEATED.',
+  hint: 'Press E on each rod until it reads SEATED (two presses each).',
+  why: 'The core runs hot until all three rods are seated, and only then does POWER stabilise.',
   type: 'cycle',
   states: ['RAISED', 'HALF', 'SEATED'],
   stateLabels: ['RAISED', 'HALF', 'SEATED'],
@@ -380,8 +383,9 @@ const REACTOR_RODS = {
 
 const MED_PODS = {
   id: 'med-pods',
-  title: 'Harvest the growth pods',
-  hint: 'Harvest all three hydroponic pods.',
+  title: 'Pick the growth pods',
+  hint: 'Press E on all three pods.',
+  why: 'These pods are your food and the ship\'s BIOMASS. Miss one and both run short.',
   type: 'count',
   spots: [
     { x: 22.5, z: -6.0, ry: 0 },
@@ -398,8 +402,9 @@ const MED_PODS = {
 
 const MED_STERILIZERS = {
   id: 'med-sterilizers',
-  title: 'Purge the nutrient lines',
-  hint: 'Cycle each nutrient line to CLEAN.',
+  title: 'Clean the nutrient lines',
+  hint: 'Press E on each line until it reads CLEAN (two presses each).',
+  why: 'Dirty lines poison the crop, and HYDRO stops making BIOMASS until they run clean.',
   type: 'cycle',
   states: ['CONTAMINATED', 'CYCLING', 'CLEAN'],
   stateLabels: ['DIRTY', 'CYCLING', 'CLEAN'],
@@ -417,8 +422,9 @@ const MED_STERILIZERS = {
 
 const MED_SAMPLES = {
   id: 'med-samples',
-  title: 'Pollinate the cultivars',
-  hint: 'Treat the trays in the logged order.',
+  title: 'Pollinate the trays',
+  hint: 'Press the trays in the order the panel shows.',
+  why: 'Without pollination the crop never sets, so there is no next BIOMASS harvest.',
   type: 'sequence',
   spots: [
     { x: 23.2, z: 5.2, ry: Math.PI },
@@ -434,8 +440,9 @@ const MED_SAMPLES = {
 
 const NAV_ANTENNAS = {
   id: 'nav-antennas',
-  title: 'Align the antenna array',
-  hint: 'Bring the dishes online in order.',
+  title: 'Point the antennas',
+  hint: 'Press the dishes in the order the panel shows.',
+  why: 'With the array down the ship is flying blind and NAV / COMMS makes no DATA.',
   type: 'sequence',
   spots: [
     { x: -23.4, z: -5.6, ry: 0.15 },
@@ -451,8 +458,9 @@ const NAV_ANTENNAS = {
 
 const NAV_SENSORS = {
   id: 'nav-sensors',
-  title: 'Log the stellar drift',
-  hint: 'Read all three viewport sensors.',
+  title: 'Read the drift sensors',
+  hint: 'Press E on all three sensors.',
+  why: 'The ship does not know where it is. Every reading restores the DATA Nav runs on.',
   type: 'count',
   spots: [
     { x: -23.5, z: 7.2, ry: Math.PI },
@@ -469,8 +477,9 @@ const NAV_SENSORS = {
 
 const NAV_CONSOLES = {
   id: 'nav-consoles',
-  title: 'Decode the transmission',
-  hint: 'Cycle each console to LOCKED.',
+  title: 'Lock the transmission',
+  hint: 'Press E on each console until it reads LOCKED (two presses each).',
+  why: 'A locked signal is the only way NAV / COMMS produces DATA. It is also a voice.',
   type: 'cycle',
   states: ['NOISE', 'WAVEFORM', 'LOCKED'],
   stateLabels: ['NOISE', 'WAVEFORM', 'LOCKED'],

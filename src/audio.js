@@ -342,6 +342,38 @@ export class AudioEngine {
     osc.stop(t + dur + 0.03);
   }
 
+  // Two-tone klaxon. The pod wakes up to this, and the first shift keeps
+  // hearing it while the ship is still in red alert.
+  siren(times = 2) {
+    if (!this.ready) return;
+    const ctx = this.ctx;
+    const start = ctx.currentTime + 0.02;
+
+    for (let i = 0; i < times * 2; i += 1) {
+      const t = start + i * 0.62;
+      const osc = ctx.createOscillator();
+      osc.type = 'sawtooth';
+
+      const lp = ctx.createBiquadFilter();
+      lp.type = 'lowpass';
+      lp.frequency.value = 1500;
+
+      const g = ctx.createGain();
+      const high = i % 2 === 0;
+      osc.frequency.setValueAtTime(high ? 440 : 660, t);
+      osc.frequency.linearRampToValueAtTime(high ? 660 : 440, t + 0.52);
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.13, t + 0.05);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.58);
+
+      osc.connect(lp);
+      lp.connect(g);
+      g.connect(this.master);
+      osc.start(t);
+      osc.stop(t + 0.62);
+    }
+  }
+
   success() {
     if (!this.ready) return;
     this.beep(440, 0.12, 'sine', 0.06);

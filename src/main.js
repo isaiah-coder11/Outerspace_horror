@@ -167,6 +167,9 @@ const TASK_EERIE_LINES = [
 const hud = $('#hud');
 const startScreen = $('#startScreen');
 const pauseScreen = $('#pauseScreen');
+const wakeScene = $('#wakeScene');
+const wakeBtn = $('#wakeBtn');
+const alarmWash = $('#alarmWash');
 const modal = $('#modal');
 const nightScreen = $('#nightScreen');
 const gameOverScreen = $('#gameOver');
@@ -1104,11 +1107,20 @@ function refreshTasks() {
     title.className = 'task-title';
     title.textContent = task ? task.title : '—';
 
+    const why = document.createElement('div');
+    why.className = 'task-why';
+    why.textContent = task ? task.def.why || '' : '';
+
     const hint = document.createElement('div');
     hint.className = 'task-hint';
     if (task && !task.complete && RESOURCE_FLOW[roomId]) {
       const flow = RESOURCE_FLOW[roomId];
-      hint.textContent = `${task.hint} · −1 ${RESOURCE_META[flow.cost].short}/STEP · +1 ${RESOURCE_META[flow.yields].short} PER STEP`;
+      const order = task.def.type === 'sequence' && Array.isArray(task.sequence)
+        ? ` · ORDER ${task.sequence.map((n) => n + 1).join(' → ')}`
+        : task.def.type === 'cycle'
+          ? ' · TWO PRESSES EACH'
+          : '';
+      hint.textContent = `${task.hint}${order} · −1 ${RESOURCE_META[flow.cost].short} / +1 ${RESOURCE_META[flow.yields].short} PER PRESS`;
     } else {
       hint.textContent = task ? task.hint : '';
     }
@@ -1121,8 +1133,8 @@ function refreshTasks() {
     if (task && !task.complete) {
       const held = state.backpack[toolKey] || 0;
       toolLine.textContent = held
-        ? `${toolMeta.label} READY · ${held} IN PACK`
-        : `GET ${toolMeta.label} · ${toolMeta.storeName} · ${ROOM_META[toolMeta.store].short}`;
+        ? `TOOL READY · ${toolMeta.label} ×${held}`
+        : `GET TOOL · ${toolMeta.label} · ${toolMeta.storeName} (${ROOM_META[toolMeta.store].short})`;
       toolLine.dataset.level = held ? 'ok' : 'need';
     }
 
@@ -1131,9 +1143,9 @@ function refreshTasks() {
       const meta = RESOURCE_META[flow.cost];
       const source = document.createElement('div');
       source.className = 'task-source';
-      source.textContent = `⌖ ${meta.short} · ${ROOM_META[meta.room].short}`;
+      source.textContent = `⌖ GET ${meta.short} FROM ${ROOM_META[meta.room].short} — CLICK TO MARK IT`;
 
-      li.append(head, title, hint, toolLine, source);
+      li.append(head, title, why, hint, toolLine, source);
       li.classList.add('clickable');
       li.tabIndex = 0;
       li.setAttribute('role', 'button');
@@ -1145,7 +1157,7 @@ function refreshTasks() {
         focusReserve(roomId);
       });
     } else {
-      li.append(head, title, hint, toolLine);
+      li.append(head, title, why, hint, toolLine);
     }
     taskList.append(li);
 
@@ -1871,10 +1883,11 @@ function startGame() {
   respawnPlayer();
   startDay();
 
-  log('Shift log: EREBUS-9 adrift. Crew manifest empty.', 'ghostly');
-  log('Restore three compartments. Harvest food in Hydro Bay. Sleep in the pod.', 'warn');
-  log('Reactor north, Hydro Bay east, Nav west. Escape bay south.', 'ghostly');
-  log('Assembling the escape pod costs 20 reserves — but not until the hull is sound.', 'warn');
+  log('You wake in berth 14 with the siren going. You are a passenger — the crew is gone.', 'bad');
+  log('Keep three bays alive: Reactor north, Hydro east, Nav west. Sleep in the cryo pod.', 'warn');
+  log('Each job needs a tool from another bay. The job list says what to press and why it matters.', 'ghostly');
+  log('Escape bay south. The pod needs 40 reserves and 10 shifts on a sound hull.', 'warn');
+  beginRedAlert(26);
 
   requestLock();
   window.setTimeout(() => {
@@ -1999,6 +2012,31 @@ pauseScreenEl.addEventListener('click', () => {
   requestLock();
 });
 
+// The pod opens first: siren, red strobe, and the realisation that the
+// person waking up is a passenger, not crew.
+let alarmTimer = 0;
+let alarmBurst = 0;
+
+function beginRedAlert(seconds) {
+  if (!alarmWash) return;
+  alarmWash.classList.remove('hidden');
+  window.clearTimeout(alarmTimer);
+  window.clearInterval(alarmBurst);
+  alarmBurst = window.setInterval(() => audio.beep(520, 0.16, 'sawtooth', 0.045), 2600);
+  alarmTimer = window.setTimeout(() => {
+    alarmWash.classList.add('hidden');
+    window.clearInterval(alarmBurst);
+  }, seconds * 1000);
+}
+
+function wakeUp() {
+  wakeScene.classList.add('hidden');
+  audio.start();
+  audio.siren(2);
+  beginRedAlert(7);
+}
+
+wakeBtn.addEventListener('click', wakeUp);
 startBtn.addEventListener('click', startGame);
 restartBtn.addEventListener('click', restart);
 resumeBtn.addEventListener('click', resumeGame);

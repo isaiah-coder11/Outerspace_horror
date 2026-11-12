@@ -32,6 +32,25 @@
         </div>
       </div>
 
+      <!-- ───────────────────────── WAKE ───────────────────────── -->
+      <div id="alarmWash" class="hidden" aria-hidden="true"></div>
+
+      <div id="wakeScene" class="overlay">
+        <div class="wake-inner">
+          <div class="wake-strobe" aria-hidden="true"></div>
+          <p class="eyebrow red">PASSENGER CRYO · BERTH 14 · EREBUS-9</p>
+          <h1 class="wake-title">WAKE<span>UP</span></h1>
+          <div class="wake-log">
+            <p>You are not crew. You paid for a berth and slept through the crossing.</p>
+            <p>The siren is the first thing that is real — red light through the pod glass,
+              the deck shaking under your back.</p>
+            <p>No footsteps. No voices. The ship is still asking somebody to fix it.</p>
+          </div>
+          <button id="wakeBtn" class="btn" type="button">OPEN THE POD</button>
+          <p class="wake-hint">Headphones recommended · audio starts on wake</p>
+        </div>
+      </div>
+
       <!-- ───────────────────────── HUD ───────────────────────── -->
       <div id="hud" class="hidden">
         <div id="waypoints" aria-hidden="true"></div>
@@ -39,7 +58,7 @@
         <header id="topbar">
           <div class="tb-side tb-left">
             <span class="vessel">EREBUS&#8209;9</span>
-            <span class="tb-sub">DEEP SALVAGE</span>
+            <span class="tb-sub">PASSENGER LINER</span>
           </div>
 
           <div class="tb-main">
@@ -77,7 +96,8 @@
         </header>
 
         <aside id="taskPanel" aria-label="Daily maintenance">
-          <h2>DAILY MAINTENANCE</h2>
+          <h2>TODAY'S JOBS</h2>
+          <p class="panel-lede">You are a passenger doing the crew's work. Every job keeps one system — and one reserve — alive.</p>
           <ul id="taskList"></ul>
           <div id="reserves" class="reserves" aria-label="Compartment reserves">
             <span class="reserve" data-res="power">POWER <b id="resPower">30</b><i id="resPowerNext" class="reserve-next"></i></span>
@@ -122,30 +142,32 @@
       <!-- ─────────────────────── START ─────────────────────── -->
       <div id="startScreen" class="overlay">
         <div class="start-inner">
-          <p class="eyebrow">SALVAGE LOG · VESSEL EREBUS-9 · DAY 01</p>
+          <p class="eyebrow">PASSENGER MANIFEST · BERTH 14 · DAY 01</p>
           <h1 class="title">VOID<span>SHIFT</span></h1>
           <p class="lede">
-            The crew is gone. The ship still needs you.<br />
-            Maintain three compartments, harvest food, and keep the hull under control.
-            At night the lights go out &mdash; and something walks the corridors.
+            The siren woke you. The crew is gone, the hull is opening, and you are the
+            only passenger still breathing.<br />
+            Keep three bays running, keep yourself fed, and build the escape pod in the
+            south bay before Erebus-9 comes apart.
           </p>
 
           <div class="rules">
             <div class="rule">
-              <span class="rule-key">DAY</span>
-              <p>Repair one task in each compartment and harvest food in <strong>Hydro Bay</strong>
-                before the shift timer runs out. Every repair step burns a reserve that
-                <strong>another bay produces</strong> — run one dry and the chain stalls.</p>
+              <span class="rule-key">JOBS</span>
+              <p>Each bay has one job today. Take the tool its locker names, then press
+                <kbd>E</kbd> on every marked unit. Each press spends <strong>1 reserve</strong>
+                from another bay and pays one back to this one.</p>
             </div>
             <div class="rule">
-              <span class="rule-key">NIGHT</span>
-              <p>The first two nights are stable. After that, ship control falls every night &mdash;
-                and the hull cracks spread <strong class="amber">even with maintenance complete</strong>.</p>
+              <span class="rule-key">NIGHTS</span>
+              <p>Nights 1&ndash;3 are quiet. From night 4 the hull leaks reserves, from night 5
+                it cracks, and <strong class="amber">staying longer makes both worse</strong>.</p>
             </div>
             <div class="rule">
-              <span class="rule-key">RULES</span>
-              <p>Eat to hold off hunger. If control reaches <strong class="red">0%</strong> the hull fails.
-                Below <strong class="red">20%</strong>, something hunts you.</p>
+              <span class="rule-key">ESCAPE</span>
+              <p>The pod needs <strong>40 reserves</strong> and <strong>10 shifts</strong>. At
+                <strong class="red">0%</strong> ship control the hull fails; below
+                <strong class="red">20%</strong> something hunts you.</p>
             </div>
           </div>
 

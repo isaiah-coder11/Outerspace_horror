@@ -1390,3 +1390,158 @@ kbd {
   .task-hint { display: none; }
   .title { letter-spacing: 0.08em; }
 }
+
+/* ───────────────────────── wake scene ───────────────────────── */
+
+#wakeScene {
+  z-index: 40;
+  overflow: hidden;
+  background:
+    radial-gradient(ellipse at 50% 44%, rgba(96, 8, 13, 0.5), rgba(4, 2, 3, 0.97) 70%),
+    #050203;
+}
+
+#wakeScene.hidden { display: none; }
+
+.wake-inner {
+  position: relative;
+  z-index: 2;
+  width: min(680px, 92vw);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+  text-align: center;
+}
+
+.wake-strobe {
+  position: fixed;
+  inset: -20%;
+  pointer-events: none;
+  background: radial-gradient(circle at 50% 50%, rgba(255, 30, 40, 0.18), transparent 62%);
+  animation: wake-strobe 2.4s ease-in-out infinite;
+}
+
+@keyframes wake-strobe {
+  0%, 100% { opacity: 0.25; }
+  8% { opacity: 0.9; }
+  18% { opacity: 0.2; }
+  30% { opacity: 0.75; }
+  55% { opacity: 0.15; }
+  70% { opacity: 0.6; }
+}
+
+.wake-title {
+  margin: 0;
+  font-size: clamp(48px, 10vw, 104px);
+  line-height: 0.84;
+  letter-spacing: 0.14em;
+  color: #ffe9ea;
+  text-shadow: 0 0 22px rgba(255, 52, 62, 0.55), 0 0 90px rgba(150, 10, 20, 0.5);
+  animation: wake-pulse 2.4s ease-in-out infinite;
+}
+
+.wake-title span {
+  display: block;
+  margin-top: 10px;
+  font-size: 0.5em;
+  letter-spacing: 0.6em;
+  text-indent: 0.6em;
+  color: rgba(255, 96, 104, 0.9);
+}
+
+@keyframes wake-pulse {
+  0%, 100% { opacity: 0.82; }
+  10% { opacity: 1; }
+  40% { opacity: 0.7; }
+  60% { opacity: 0.95; }
+}
+
+.wake-log { display: grid; gap: 7px; max-width: 520px; }
+
+.wake-log p {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.8;
+  letter-spacing: 0.06em;
+  color: rgba(240, 206, 208, 0.76);
+}
+
+.wake-hint {
+  margin: 0;
+  font-size: 9px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: rgba(255, 140, 146, 0.5);
+}
+
+#alarmWash {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  pointer-events: none;
+  mix-blend-mode: screen;
+  background:
+    radial-gradient(ellipse at 50% 50%, rgba(255, 26, 36, 0) 28%, rgba(255, 20, 30, 0.38) 100%),
+    linear-gradient(rgba(255, 24, 34, 0.06), rgba(255, 24, 34, 0.06));
+  animation: alarm-wash 1.9s ease-in-out infinite;
+}
+
+#alarmWash.hidden { display: none; }
+
+@keyframes alarm-wash {
+  0%, 100% { opacity: 0.18; }
+  12% { opacity: 0.62; }
+  26% { opacity: 0.12; }
+  44% { opacity: 0.5; }
+  70% { opacity: 0.1; }
+}
+
+/* job panel: why the job matters and exactly what to press */
+
+.panel-lede {
+  margin: 0 0 2px;
+  font-size: 9.5px;
+  line-height: 1.6;
+  letter-spacing: 0.05em;
+  color: rgba(180, 208, 224, 0.55);
+}
+
+.task-why {
+  font-size: 9.5px;
+  line-height: 1.55;
+  letter-spacing: 0.04em;
+  color: rgba(255, 190, 138, 0.76);
+}
+
+/* the job panel has to stay clear of the log: scroll instead of growing */
+
+#taskPanel {
+  max-height: calc(100vh - 250px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(127, 228, 255, 0.28) transparent;
+}
+
+#taskPanel::-webkit-scrollbar { width: 4px; }
+#taskPanel::-webkit-scrollbar-thumb { background: rgba(127, 228, 255, 0.28); }
+
+#taskPanel .panel-lede { margin-bottom: 8px; }
+#taskList { gap: 9px; }
+.task-title { font-size: 11.5px; }
+.task-why { font-size: 9px; }
+.task-hint { font-size: 8.5px; letter-spacing: 0.07em; }
+.task-tool { font-size: 7.6px; }
+.task-source { font-size: 8px; }
+
+@media (max-height: 780px) {
+  #taskPanel { max-height: calc(100vh - 215px); }
+}
+
+/* clear the log by a few pixels on short viewports */
+#taskPanel { max-height: calc(100vh - 248px); }
+
+@media (max-height: 780px) {
+  #taskPanel { max-height: calc(100vh - 232px); }
+}
