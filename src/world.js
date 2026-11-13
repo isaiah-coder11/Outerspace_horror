@@ -1517,6 +1517,18 @@ export function createWorld(scene) {
 
   let lurkMode = 'idle'; // idle | door | stand | grab
   let lurkLife = 0;
+  let lurkerVanished = false;
+
+  // ── the peeker ───────────────────────────────────────────
+  // A second body used only for half-seen things: a head leaned out of a
+  // vent, or a shoulder around the far door frame. It never walks.
+  const peeker = buildCreature();
+  peeker.group.visible = false;
+  peeker.setEyeGlow(0.9);
+  root.add(peeker.group);
+
+  let peekMode = 'idle'; // idle | vent | corridor
+  let peekLife = 0;
 
   // ── dust ──────────────────────────────────────────────────
   const dust = addDust();
@@ -1541,15 +1553,20 @@ export function createWorld(scene) {
     entry.flickerStrength = 0.1 + Math.random() * 0.35 * strength;
   }
 
+  let ghostVanished = false;
+
+  // No fade, no drift in: it is simply standing there the moment you turn
+  // the corner. Called for both the first sighting and the later watcher.
   function showGhost(playerPos, position) {
     const pos = position || pickGhostSpot(playerPos);
     if (!pos) return;
     ghost.group.position.set(pos.x, 0, pos.z);
     ghost.group.rotation.set(0, Math.atan2(playerPos.x - pos.x, playerPos.z - pos.z), 0);
     ghost.group.visible = true;
-    ghostMode = 'fadein';
+    ghostMode = 'hold';
     ghostLife = 0;
-    ghostFade = 0;
+    ghostFade = 1;
+    ghost.setOpacity(1);
   }
 
   function showWatcher(playerPos) {
@@ -1562,7 +1579,25 @@ export function createWorld(scene) {
     ghost.group.visible = true;
     ghostMode = 'watcher';
     ghostLife = 0;
+    ghostFade = 1;
+    ghost.setOpacity(1);
+    flicker(0.7);
+  }
+
+  // Gone between one frame and the next, with nothing left behind.
+  function vanishGhost() {
+    if (!ghost.group.visible) return;
+    ghost.group.visible = false;
+    ghostMode = 'idle';
     ghostFade = 0;
+    ghost.setOpacity(0);
+    ghostVanished = true;
+  }
+
+  function consumeGhostVanish() {
+    const value = ghostVanished;
+    ghostVanished = false;
+    return value;
   }
 
   function hideGhost() {
@@ -1578,7 +1613,6 @@ export function createWorld(scene) {
       ghostFade = Math.min(1, ghostFade + dt / 0.9);
       if (ghostFade >= 1) ghostMode = 'hold';
     } else if (ghostMode === 'watcher') {
-      ghostFade = Math.min(1, ghostFade + dt / 0.7);
       ghostLife += dt;
 
       const dx = camera.position.x - ghost.group.position.x;
@@ -1586,12 +1620,13 @@ export function createWorld(scene) {
       const dist = Math.hypot(dx, dz);
       ghost.group.rotation.y = Math.atan2(dx, dz);
 
-      // It stands in the background until you actually look at it.
-      if (ghostLife > 0.6 && ghostFade > 0.4 && dist > 2.2) {
+      // It is only there while you are not looking straight at it: meet its
+      // eyes and it is already gone.
+      if (ghostLife > 0.12 && dist > 1.6) {
         const forward = new THREE.Vector3();
         camera.getWorldDirection(forward);
         const toGhost = new THREE.Vector3(-dx, 0, -dz).normalize();
-        if (forward.dot(toGhost) > 0.82) ghostMode = 'fadeout';
+        if (forward.dot(toGhost) > 0.9) vanishGhost();
       }
 
       if (ghostLife > 7.5) ghostMode = 'fadeout';
@@ -1607,6 +1642,13 @@ export function createWorld(scene) {
       }
       ghost.group.rotation.y = Math.atan2(dx, dz);
 
+      if (dist > 1.6) {
+        const forward = new THREE.Vector3();
+        camera.getWorldDirection(forward);
+        const toGhost = new THREE.Vector3(-dx, 0, -dz).normalize();
+        if (forward.dot(toGhost) > 0.9) vanishGhost();
+      }
+
       if (dist < 5.5 || ghostLife > 4.6) ghostMode = 'fadeout';
     } else if (ghostMode === 'fadeout') {
       ghostFade = Math.max(0, ghostFade - dt / 0.55);
@@ -1621,28 +1663,35 @@ export function createWorld(scene) {
     ghost.group.position.y = Math.sin(elapsed * 1.4) * 0.04;
   }
 
-  function pickGhostSpot(playerPos) {
+  // Close enough that it takes a second to understand what you are seeing.
+  function pickGhostSpot(playerPos, minDist = 6) {
     const spots = [
+      { x: 0, z: -11 },
+      { x: 0, z: 11 },
+      { x: 11, z: 0 },
+      { x: -11, z: 0 },
       { x: 0, z: -17.4 },
-      { x: 4.2, z: 6.3 },
       { x: 17.4, z: 0 },
       { x: -17.4, z: 0 },
-      { x: 0, z: -31.4 },
-      { x: 31.4, z: 0 },
-      { x: -31.4, z: 0 },
+      { x: 0, z: 17.4 },
+      { x: 26, z: 0 },
+      { x: -26, z: 0 },
+      { x: 0, z: -26 },
+      { x: 0, z: 26 },
       { x: 26, z: 7.2 },
       { x: -26, z: -7.2 },
     ];
     let best = null;
-    let bestDist = 0;
+    let bestDist = Infinity;
     spots.forEach((s) => {
       const d = Math.hypot(s.x - playerPos.x, s.z - playerPos.z);
-      if (d > bestDist) {
+      if (d < minDist) return;
+      if (d < bestDist) {
         bestDist = d;
         best = s;
       }
     });
-    return bestDist > 7 ? best : spots[0];
+    return best || spots[0];
   }
 
   function update(dt, camera) {
@@ -1785,11 +1834,26 @@ export function createWorld(scene) {
 
     if (lurker.group.visible) {
       if (lurkMode === 'door') {
-        // out of the frame, two seconds of nothing, then gone
+        // out of the frame, two seconds of nothing, then gone — sooner if
+        // you turn and meet its eyes
         lurkLife -= dt;
         lurker.head.rotation.z = 0.05 + Math.sin(elapsed * 3.1) * 0.05;
         lurker.setEyeGlow(0.85 + Math.sin(elapsed * 17) * 0.15);
-        if (lurkLife <= 0) hideLurker();
+
+        const dx = camera.position.x - lurker.group.position.x;
+        const dz = camera.position.z - lurker.group.position.z;
+        const dist = Math.hypot(dx, dz) || 1;
+        if (dist > 2) {
+          const forward = new THREE.Vector3();
+          camera.getWorldDirection(forward);
+          // dx/dz point from it to the camera, so flip them to aim.
+          if ((-dx * forward.x - dz * forward.z) / dist > 0.9) {
+            hideLurker();
+            lurkerVanished = true;
+          }
+        }
+
+        if (lurkMode === 'door' && lurkLife <= 0) hideLurker();
       } else if (lurkMode === 'stand') {
         lurker.head.rotation.z = 0.05 + Math.sin(elapsed * 1.3) * 0.04;
         lurker.jaw.rotation.x = 0.08 + Math.sin(elapsed * 2.2) * 0.05;
@@ -1803,6 +1867,21 @@ export function createWorld(scene) {
           arm.rotation.x = -0.9 + Math.sin(elapsed * 19 + index) * 0.25;
           arm.rotation.z = (index === 0 ? 1 : -1) * 0.12;
         });
+      }
+    }
+
+    if (peeker.group.visible) {
+      peekLife += dt;
+      if (peekMode === 'vent') {
+        // The head leans in the frame, looking along the corridor instead
+        // of straight back at you.
+        peeker.head.rotation.z = 0.3 + Math.sin(elapsed * 2.4) * 0.05;
+        peeker.head.rotation.y = 0.55 + Math.sin(elapsed * 0.9) * 0.08;
+        peeker.setEyeGlow(0.9 + Math.sin(elapsed * 9.3) * 0.1);
+      } else if (peekMode === 'corridor') {
+        peeker.head.rotation.y = Math.sin(elapsed * 1.7) * 0.12;
+        peeker.jaw.rotation.x = 0.06 + Math.sin(elapsed * 2.6) * 0.05;
+        peeker.setEyeGlow(0.75 + Math.sin(elapsed * 7.7) * 0.2);
       }
     }
 
@@ -2019,6 +2098,117 @@ export function createWorld(scene) {
     lurkLife = 0;
   }
 
+  // ── peeking ───────────────────────────────────────────────
+  // Two half-poses. The vent one keeps the body inside the wall so only a
+  // face shows through the slats; the corridor one puts a shoulder just
+  // past the far door frame.
+
+  function ventSpotAhead(playerPos, camera) {
+    const forward = new THREE.Vector3();
+    camera.getWorldDirection(forward);
+
+    let best = null;
+    let bestScore = -Infinity;
+    ventEntries.forEach((vent, index) => {
+      const v = vent.group.position;
+      const dx = v.x - playerPos.x;
+      const dz = v.z - playerPos.z;
+      const dist = Math.hypot(dx, dz);
+      if (dist < 1.4 || dist > 12) return;
+
+      const dot = (dx * forward.x + dz * forward.z) / (dist || 1);
+      if (dot < 0.15) return;
+
+      const score = dot * 2 - Math.abs(dist - 5.5) * 0.07;
+      if (score > bestScore) {
+        bestScore = score;
+        best = { index, vent, dist };
+      }
+    });
+
+    return best;
+  }
+
+  function showVentPeek(playerPos, camera) {
+    const spot = ventSpotAhead(playerPos, camera);
+    if (!spot) return null;
+
+    const v = spot.vent.group.position;
+    const normal = new THREE.Vector3();
+    spot.vent.group.getWorldDirection(normal);
+    const scale = 0.78;
+
+    // Only the head exists for this pose: it leans out of the grate at an
+    // angle, and the body that owns it stays inside the duct.
+    peeker.group.children.forEach((child) => {
+      child.visible = child === peeker.head;
+    });
+
+    const towardX = playerPos.x - v.x;
+    const towardZ = playerPos.z - v.z;
+    const towardLen = Math.hypot(towardX, towardZ) || 1;
+    const lean = 0.24;
+
+    peeker.group.position.set(
+      v.x + (towardX / towardLen) * lean + normal.x * 0.06,
+      v.y - CREATURE_HEAD_Y * scale,
+      v.z + (towardZ / towardLen) * lean + normal.z * 0.06,
+    );
+    peeker.group.scale.setScalar(scale);
+    peeker.group.visible = true;
+    peeker.group.rotation.set(0, Math.atan2(playerPos.x - v.x, playerPos.z - v.z), 0.22);
+    peeker.head.rotation.set(0.04, 0.55, 0.3);
+    peeker.jaw.rotation.x = 0.05;
+    peeker.arms.forEach((arm, index) => arm.rotation.set(0, 0, (index ? -1 : 1) * 0.2));
+    peeker.setEyeGlow(0.95);
+
+    peekMode = 'vent';
+    peekLife = 0;
+    return { x: v.x, y: v.y, z: v.z, index: spot.index };
+  }
+
+  function showCorridorPeek(playerPos, camera) {
+    const spot = lurkSpot(playerPos, camera);
+    if (!spot) return null;
+
+    // This pose has a body again.
+    peeker.group.children.forEach((child) => {
+      child.visible = true;
+    });
+
+    const forward = new THREE.Vector3();
+    camera.getWorldDirection(forward);
+    const right = new THREE.Vector3(-forward.z, 0, forward.x);
+    const side = Math.random() < 0.5 ? -1 : 1;
+    // Far enough past the jamb that the wall takes the rest of it.
+    const x = spot.x + right.x * 2.75 * side;
+    const z = spot.z + right.z * 2.75 * side;
+
+    peeker.group.position.set(x, 0, z);
+    peeker.group.scale.setScalar(1.02);
+    peeker.group.visible = true;
+    peeker.group.rotation.set(0, Math.atan2(playerPos.x - x, playerPos.z - z), 0);
+    peeker.head.rotation.set(0.02, side * 0.42, side * 0.16);
+    peeker.jaw.rotation.x = 0.07;
+    peeker.arms.forEach((arm) => arm.rotation.set(0, 0, 0));
+    peeker.setEyeGlow(0.8);
+
+    peekMode = 'corridor';
+    peekLife = 0;
+    return { x, z };
+  }
+
+  function hidePeek() {
+    peeker.group.visible = false;
+    peekMode = 'idle';
+    peekLife = 0;
+  }
+
+  function setPeekVisible(visible) {
+    if (peekMode === 'idle') return;
+    peeker.group.visible = !!visible;
+  }
+
   // Right in the visor, jaw open, both hands up: the struggle pose.
   function grabLurker(camera) {
     const forward = new THREE.Vector3();
@@ -2069,6 +2259,17 @@ export function createWorld(scene) {
     showLurker,
     hideLurker,
     grabLurker,
+    showVentPeek,
+    showCorridorPeek,
+    hidePeek,
+    setPeekVisible,
+    consumeGhostVanish,
+    consumeLurkerVanish: () => {
+      const value = lurkerVanished;
+      lurkerVanished = false;
+      return value;
+    },
+    peekMode: () => peekMode,
     hunter: stalker.group,
     lurker: lurker.group,
     doorways: DOORWAYS,

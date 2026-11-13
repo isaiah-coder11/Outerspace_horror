@@ -239,6 +239,10 @@ const backpackSlots = $('#bpSlots');
 const storeLine = $('#storeLine');
 const goEyebrow = $('#goEyebrow');
 const goTitle = $('#goTitle');
+const dreadEl = $('#dread');
+const dreadValue = $('#dreadValue');
+const dreadWord = $('#dreadWord');
+const dreadNeedle = $('.dread-needle');
 
 // ─────────────────────────────────────────────────────────────
 // renderer / world
@@ -320,6 +324,10 @@ const state = {
   nextScare: 22,
   nextDoor: 20,
   nextScurry: 8,
+  nextVentPeek: 22,
+  nextCorridorPeek: 32,
+  ventPeek: null,
+  corridorPeek: null,
   firstSighting: false,
   firstSightingTimer: 0,
   standRoom: null,
@@ -1331,6 +1339,11 @@ function startDay(savedTasks = null, options = {}) {
 
   reservePointer = null;
   state.ventEvent = null;
+  state.ventPeek = null;
+  state.corridorPeek = null;
+  state.nextVentPeek = 20 + Math.random() * 14;
+  state.nextCorridorPeek = 30 + Math.random() * 18;
+  if (world.hidePeek) world.hidePeek();
   state.ventCooldown = 0;
   state.ventHuntPending = 0;
   state.ventAmbient = 18;
@@ -2385,6 +2398,64 @@ function updateCorridors(dt) {
   }
 }
 
+// ─────────────────────────────────────────────────────────────
+// dread radar
+//
+// One reading of how wrong the ship currently feels: how far control has
+// fallen, how many cracks are open, how close the thing is allowed to get,
+// and whatever just moved. It is a gauge, not a promise of safety.
+// ─────────────────────────────────────────────────────────────
+
+const DREAD_WORDS = [
+  { at: 80, word: 'CRITICAL', level: 'critical' },
+  { at: 60, word: 'STALKED', level: 'stalked' },
+  { at: 36, word: 'WATCHED', level: 'watched' },
+  { at: 15, word: 'UNEASY', level: 'uneasy' },
+  { at: 0, word: 'QUIET', level: 'calm' },
+];
+
+let dreadUiTimer = 0;
+let lastDread = -1;
+
+function dreadScore() {
+  if (!state.started) return 0;
+
+  const controlLoss = 100 - state.life;
+  let score = controlLoss * 0.46;
+  score += state.cracks.length ? 5 + crackDamage() * 0.85 : 0;
+  score += Math.min(18, (state.monsterPhase || 0) * 7);
+  if (state.huntActive) score += 15;
+  if (state.ventEvent) score += 5;
+  if (state.escape) score += 8;
+  score += Math.min(9, (state.shake || 0) * 12);
+
+  return clamp(Math.round(score), 0, 100);
+}
+
+function updateDread(dt) {
+  if (!dreadEl) return;
+
+  dreadUiTimer -= dt;
+  if (dreadUiTimer > 0) return;
+  dreadUiTimer = 0.18;
+
+  const score = dreadScore();
+  if (score === lastDread) return;
+  lastDread = score;
+
+  const reading = DREAD_WORDS.find((entry) => score >= entry.at) || DREAD_WORDS[DREAD_WORDS.length - 1];
+
+  dreadValue.textContent = String(score).padStart(2, '0');
+  dreadWord.textContent = reading.word;
+  dreadEl.dataset.level = reading.level;
+  dreadEl.setAttribute('aria-label', `Dread level ${score} — ${reading.word}`);
+
+  if (dreadNeedle) {
+    // The needle sweeps the dial from -130° (quiet) to +130° (critical).
+    dreadNeedle.style.transform = `rotate(${(-130 + (score / 100) * 260).toFixed(1)}deg)`;
+  }
+}
+
 // Something small lives in the walls. It moves when the ship is quiet,
 // more often as control falls, and it is always just out of sight.
 function updateScurry(dt) {
@@ -2981,18 +3052,22 @@ function applyMonsterPhase() {
     state.standRoom = null;
     state.nextWatcher = 26 + Math.random() * 16;
     state.nextDoor = 24 + Math.random() * 12;
+    state.nextVentPeek = 14 + Math.random() * 12;
   } else if (phase === 1) {
     stopHunt();
     world.hideLurker();
     state.standRoom = null;
     state.nextWatcher = 34 + Math.random() * 16;
     state.nextDoor = 13 + Math.random() * 8;
+    state.nextVentPeek = 18 + Math.random() * 14;
+    state.nextCorridorPeek = 24 + Math.random() * 16;
   } else if (phase === 2) {
     stopHunt();
     state.standRoom = null;
     state.standCooldown = 2.6 + Math.random() * 2.2;
     state.nextWatcher = 999;
     state.nextDoor = 999;
+    state.nextCorridorPeek = 26 + Math.random() * 16;
   } else {
     world.hideLurker();
     state.standRoom = null;
@@ -3007,6 +3082,14 @@ function applyMonsterPhase() {
     }
   }
 
+  // The peeks belong to the open, quiet ship; once it is coming out of the
+  // vents properly, half-seen things are no longer the point.
+  if (phase >= 2 && (state.ventPeek || state.corridorPeek)) {
+    world.hidePeek();
+    state.ventPeek = null;
+    state.corridorPeek = null;
+  }
+
   if (state.started && phase !== previous) {
     if (phase === 1) {
       log('It keeps appearing in the doorways. It never stays long.', 'bad');
@@ -3018,6 +3101,84 @@ function applyMonsterPhase() {
       log('SHIP CONTROL CRITICAL — the vents are opening.', 'bad');
     }
   }
+}
+
+// ── peeking scares ──────────────────────────────────────────
+// Two things the ship does with the corner of your eye: a face in the vent
+// that leaves when you look right at it, and a shoulder around the far
+// doorway that is only there while you are walking toward it.
+
+const gazeVector = new THREE.Vector3();
+
+function gazeDot(pos) {
+  camera.getWorldDirection(gazeVector);
+  const dx = pos.x - camera.position.x;
+  const dz = pos.z - camera.position.z;
+  const dist = Math.hypot(dx, dz) || 1;
+  return (dx * gazeVector.x + dz * gazeVector.z) / dist;
+}
+
+// Stereo position of a sound that is over there rather than in front.
+function panFor(pos) {
+  camera.getWorldDirection(gazeVector);
+  const dx = pos.x - camera.position.x;
+  const dz = pos.z - camera.position.z;
+  const dist = Math.hypot(dx, dz) || 1;
+  return clamp((dx * -gazeVector.z + dz * gazeVector.x) / dist, -1, 1);
+}
+
+function updateVentPeek(dt) {
+  const peek = state.ventPeek;
+  if (!peek) return;
+
+  peek.life += dt;
+
+  // Meet its eyes and it is gone, feet first, into the duct.
+  if (peek.life > 0.18 && gazeDot(peek) > 0.9) {
+    world.hidePeek();
+    state.ventPeek = null;
+    audio.scurry(panFor(peek), 0.11);
+    return;
+  }
+
+  if (peek.life > 7) {
+    world.hidePeek();
+    state.ventPeek = null;
+  }
+}
+
+function updateCorridorPeek(dt) {
+  const peek = state.corridorPeek;
+  if (!peek) return;
+
+  peek.life += dt;
+
+  const moving = player.vel.length() > 0.65;
+  const staring = gazeDot(peek) > 0.985;
+  peek.stare = staring ? (peek.stare || 0) + dt : 0;
+
+  if (peek.life > 9) {
+    world.hidePeek();
+    state.corridorPeek = null;
+    return;
+  }
+
+  if (peek.stare > 0.3) {
+    world.hidePeek();
+    state.corridorPeek = null;
+    audio.whisper();
+    return;
+  }
+
+  // It only exists in motion: stop walking and the doorway is empty.
+  if (!moving) {
+    world.hidePeek();
+    state.corridorPeek = null;
+    audio.scurry(panFor(peek), 0.08);
+    return;
+  }
+
+  world.setPeekVisible(true);
 }
 
 function updateMonster(dt) {
@@ -3064,6 +3225,47 @@ function updateMonster(dt) {
   if (phase === 2) updateLurkerStand(dt);
 
   if (phase === 3) updateHunt(dt);
+
+  updateVentPeek(dt);
+  updateCorridorPeek(dt);
+
+  // A face in the vent at high control: it watches until watched.
+  if (phase <= 1) {
+    state.nextVentPeek -= dt;
+    if (state.nextVentPeek <= 0) {
+      state.nextVentPeek = 24 + Math.random() * 18;
+      if (!state.ventPeek && !state.corridorPeek) {
+        const spot = world.showVentPeek(player.pos, camera);
+        if (spot) {
+          state.ventPeek = { ...spot, life: 0 };
+          audio.creak();
+        }
+      }
+    }
+  }
+
+  // A head and shoulder around the far door, only while you are walking.
+  if (phase >= 1 && phase <= 2) {
+    state.nextCorridorPeek -= dt;
+    if (state.nextCorridorPeek <= 0) {
+      state.nextCorridorPeek = 30 + Math.random() * 20;
+      const inCorridor = CORRIDOR_ROOMS.includes(roomAt(player.pos.x, player.pos.z));
+      if (inCorridor && player.vel.length() > 0.8 && !state.ventPeek && !state.corridorPeek) {
+        const spot = world.showCorridorPeek(player.pos, camera);
+        if (spot) state.corridorPeek = { ...spot, life: 0, stare: 0 };
+      }
+    }
+  }
+
+  // Watch the figures go: if the player met its eyes, it slips away audibly.
+  if (world.consumeGhostVanish && world.consumeGhostVanish()) {
+    audio.scurry(panFor(world.ghost.group.position), 0.09);
+    audio.whisper();
+  }
+
+  if (world.consumeLurkerVanish && world.consumeLurkerVanish()) {
+    audio.scurry(panFor(world.lurker.position), 0.09);
+  }
 
   if (state.shake > 0) state.shake = Math.max(0, state.shake - dt * 1.6);
 }
@@ -3411,6 +3613,7 @@ function animate() {
     updateMonster(dt);
     updateCorridors(dt);
     updateScurry(dt);
+    updateDread(dt);
     updateVentHazard(dt);
 
     // The hover raycast is the most expensive per-frame query; 16 Hz is

@@ -142,10 +142,14 @@ how much of the ship you still hold:
 
 | Ship control | Vents |
 | --- | --- |
-| 100–80 | They only watch. The grates stay still and the eyes blink. |
+| 100–80 | They watch. Now and then a face leans out of a grate at an angle, half behind the slats — meet its eyes and it is gone, and you hear it moving away inside the wall. |
 | 80–50 | The grate rattles as you pass and the visor fogs red with scanlines while something inside breathes. Tense, never a jumpscare. |
 | 50–20 | The jumpscare is real: lean in close and the thing lunges out of the wall. It never costs ship control, so it cannot end the run. |
 | 20–0 | It comes all the way out of a vent, and then it hunts. |
+
+Walk a corridor and a head and shoulder may be waiting just past the far door
+frame, in the room you are heading toward. It is only there while you are
+actually walking: stop and the doorway is empty, stare and it slips back.
 
 Standing in a compartment and working a repair also draws whispers — finishing a
 task does not mean the room has stopped watching.
@@ -165,8 +169,8 @@ in before the flash takes the screen.
 
 | Ship control | Behaviour |
 | --- | --- |
-| 100–80 | It lurks out of sight. Eyes blink in the vents and blood dries on the walls. |
-| 80–50 | It pops out of a door frame, stands in it for two seconds, and is gone. The vents breathe when you get close. |
+| 100–80 | It lurks out of sight and peeks: a face in a vent or a shoulder past a door frame, gone the moment you look straight at it. |
+| 80–50 | It appears in a door frame with no warning, holds until you meet its eyes, and is gone. The vents breathe when you get close. |
 | 50–20 | It waits in the corridor without moving, and the vents start throwing jump scares that cannot kill you. Get within a couple of metres of the lurker and it grabs you. |
 | 20–0 | It pulls itself out of a vent, then hunts. The chase starts at 1.3 m/s and closes on 3 m/s as the hull dies. |
 
