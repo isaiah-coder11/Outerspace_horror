@@ -2275,18 +2275,28 @@ function updatePlayer(dt, time) {
       else player.vel.y = 0;
     }
 
-    // It holds its ground. Walking into it stops you short of the doorway.
+    // It holds its ground — but only on the side it faces. Come at it from
+    // behind or from the side and it is just something standing in a room.
     if (state.corridorPeek && !state.corridorPeek.pushed) {
       const px = player.pos.x - state.corridorPeek.x;
       const pz = player.pos.z - state.corridorPeek.z;
-      const gap = Math.hypot(px, pz);
-      if (gap > 0.001 && gap < 1.9) {
-        const outX = state.corridorPeek.x + (px / gap) * 1.9;
-        const outZ = state.corridorPeek.z + (pz / gap) * 1.9;
-        if (canStand(outX, outZ)) {
-          player.pos.x = outX;
-          player.pos.z = outZ;
-          player.vel.set(0, 0);
+      const gap = Math.hypot(px, pz) || 0.001;
+      // fx/fz point down the corridor away from the player who met it, so
+      // the side it blocks is the opposite of that.
+      const facing = -(px * (state.corridorPeek.fx || 0) + pz * (state.corridorPeek.fz || 0)) / gap;
+      if (facing > 0.25 && gap < 1.45) {
+        const nx = px / gap;
+        const nz = pz / gap;
+        // Head-on it stops you dead. From behind or the side it does not
+        // lean on you at all.
+        player.vel.set(0, 0);
+        if (gap < 1.15) {
+          const outX = state.corridorPeek.x + nx * 1.15;
+          const outZ = state.corridorPeek.z + nz * 1.15;
+          if (canStand(outX, outZ)) {
+            player.pos.x = outX;
+            player.pos.z = outZ;
+          }
         }
       }
     }
@@ -3183,7 +3193,9 @@ function updateCorridorPeek(dt) {
     return;
   }
 
-  if (peek.stare > 0.3) {
+  // Staring it down works from a distance. Once it is in the doorway in
+  // front of you, looking at it is the only thing you can do.
+  if (peek.stare > 0.3 && !near) {
     world.hidePeek();
     state.corridorPeek = null;
     audio.whisper();

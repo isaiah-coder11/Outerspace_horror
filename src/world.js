@@ -1802,7 +1802,11 @@ export function createWorld(scene) {
     // frame, shifts its weight, and leans a little into the passage.
     if (peekMode === 'corridor' && peeker.group.visible) {
       peekDrift += dt;
-      const stepOut = Math.min(0.8, peekDrift * 0.1);
+      // It comes out to meet you: the closer you get, the further out of the
+      // frame it leans until it is standing in the doorway itself.
+      const toPlayer = Math.hypot(camera.position.x - peekOrigin.x, camera.position.z - peekOrigin.z);
+      const approach = Math.min(1, Math.max(0, 1 - (toPlayer - 2.2) / 4.5));
+      const stepOut = Math.min(2.62, peekDrift * 0.12 + approach * 2.4);
       const sway = Math.sin(peekDrift * 1.15) * 0.24 + Math.sin(peekDrift * 2.7) * 0.06;
       const lateral = (2.75 - stepOut) * peekSide;
       const px = peekOrigin.x + peekRight.x * lateral + peekForward.x * sway;
@@ -2243,7 +2247,9 @@ export function createWorld(scene) {
 
     peekMode = 'corridor';
     peekLife = 0;
-    return { x, z };
+    // fx/fz point down the corridor, away from the player: the side it
+    // blocks. Behind it there is nothing to push against.
+    return { x, z, fx: forward.x, fz: forward.z };
   }
 
   function hidePeek() {
