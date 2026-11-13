@@ -142,7 +142,7 @@ how much of the ship you still hold:
 
 | Ship control | Vents |
 | --- | --- |
-| 100–80 | They watch. Now and then a face leans out of a grate at an angle, half behind the slats — meet its eyes and it is gone, and you hear it moving away inside the wall. |
+| 100–80 | They watch. Now and then a face leans out of a grate at an angle, half behind the slats, stays for a breath or two, and is gone — then back at another grate, at no set rhythm. Meet its eyes and it leaves at once, and you hear it moving away inside the wall. |
 | 80–50 | The grate rattles as you pass and the visor fogs red with scanlines while something inside breathes. Tense, never a jumpscare. |
 | 50–20 | The jumpscare is real: lean in close and the thing lunges out of the wall. It never costs ship control, so it cannot end the run. |
 | 20–0 | It comes all the way out of a vent, and then it hunts. |
