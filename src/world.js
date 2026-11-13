@@ -1541,6 +1541,10 @@ export function createWorld(scene) {
   const peekForward = new THREE.Vector3();
   let peekSide = 1;
   let peekDrift = 0;
+  // Nonverbal acting for the corridor pose: an arm out at contact, a head
+  // turned to follow the player once it has been shifted past.
+  let peekReach = 0;
+  let peekTurn = 0;
 
   // ── dust ──────────────────────────────────────────────────
   const dust = addDust();
@@ -1815,6 +1819,28 @@ export function createWorld(scene) {
       peeker.group.rotation.y = Math.atan2(camera.position.x - px, camera.position.z - pz);
       peeker.head.rotation.y = peekSide * 0.42 + Math.sin(peekDrift * 0.8) * 0.1;
       peeker.head.rotation.z = peekSide * 0.16 + Math.sin(peekDrift * 1.6) * 0.06;
+
+      // Contact: one arm comes out flat, the body pitches in. E: the head
+      // comes round to follow you instead of reaching.
+      peeker.arms.forEach((arm, index) => {
+        const side = index === 0 ? 1 : -1;
+        arm.rotation.x = -1.15 * peekReach + 0.08 * peekTurn;
+        arm.rotation.y = side * 0.24 * peekTurn;
+        arm.rotation.z = side * (0.06 + 0.34 * peekReach);
+      });
+      peeker.head.rotation.x = 0.02 - 0.24 * peekReach + 0.14 * peekTurn;
+      peeker.head.rotation.z = peekSide * 0.16 + Math.sin(peekDrift * 1.6) * 0.06 - 0.14 * peekTurn;
+      peeker.setEyeGlow(0.8 + 0.2 * peekReach);
+
+      if (peekReach > 0 || peekTurn > 0) {
+        const tx = camera.position.x - px;
+        const tz = camera.position.z - pz;
+        const tl = Math.hypot(tx, tz) || 1;
+        // Reach toward the visor at contact; step back out of the way, still
+        // facing you, once you have shifted past.
+        const outward = 0.34 * peekReach - 0.85 * peekTurn;
+        peeker.group.position.set(px + (tx / tl) * outward, 0, pz + (tz / tl) * outward);
+      }
     }
 
     if (finalLife > 0) {
@@ -2256,6 +2282,22 @@ export function createWorld(scene) {
     peeker.group.visible = false;
     peekMode = 'idle';
     peekLife = 0;
+    peekReach = 0;
+    peekTurn = 0;
+  }
+
+  // It puts a hand out when you walk into it.
+  function peekLunge() {
+    if (peekMode !== 'corridor') return;
+    peekReach = 1;
+    peekTurn = 0;
+  }
+
+  // Shifted past, it turns its head to follow you rather than lunging.
+  function peekTurnHead() {
+    if (peekMode !== 'corridor') return;
+    peekTurn = 1;
+    peekReach = 0;
   }
 
   function setPeekVisible(visible) {
@@ -2316,6 +2358,8 @@ export function createWorld(scene) {
     grabLurker,
     showVentPeek,
     showCorridorPeek,
+    peekLunge,
+    peekTurnHead,
     hidePeek,
     setPeekVisible,
     peekPos: () => ({

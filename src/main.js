@@ -2248,7 +2248,10 @@ function updatePlayer(dt, time) {
 
     const exhausted = state.energy <= 8 || state.hunger <= 4;
     sprinting = (keys.has('ShiftLeft') || keys.has('ShiftRight')) && state.energy > 8 && state.hunger > 4;
-    const maxSpeed = exhausted ? 2.15 : sprinting ? 4.8 : 3.05;
+    // Shifting past it means moving slow, so it follows you with its eyes
+    // and does nothing else.
+    const creeping = state.corridorPeek && state.corridorPeek.turned;
+    const maxSpeed = (exhausted ? 2.15 : sprinting ? 4.8 : 3.05) * (creeping ? 0.4 : 1);
     const targetVx = mx * maxSpeed;
     const targetVz = mz * maxSpeed;
 
@@ -3174,7 +3177,38 @@ function updateCorridorPeek(dt) {
 
   const gap = Math.hypot(peek.x - player.pos.x, peek.z - player.pos.z);
   const near = gap < 2.3;
+
+  // After E it does nothing but watch you go, and you can only move slowly.
+  if (peek.turned) {
+    peek.turnFor = (peek.turnFor || 0) + dt;
+    world.setPeekVisible(true);
+    if (peek.turnFor > 3.4 || gap > 4.2) {
+      world.hidePeek();
+      state.corridorPeek = null;
+      audio.scurry(panFor(peek), 0.09);
+    }
+    return;
+  }
+
   peek.blocked = near ? (peek.blocked || 0) + dt : 0;
+
+  // Contact. The hand goes flat on the chest, the frame knocks, and you are
+  // put back half a step — but it never follows up.
+  if (!peek.contacted && gap < 1.5) {
+    peek.contacted = true;
+    world.peekLunge();
+    audio.thud(0.9);
+    audio.whisper();
+    world.flicker(0.5);
+    state.shake = Math.max(state.shake, 0.66);
+    player.pitchTarget = clamp(player.pitchTarget - 0.17, -1.2, 1.2);
+    player.bob += 0.8;
+    const nx = (player.pos.x - peek.x) / (gap || 1);
+    const nz = (player.pos.z - peek.z) / (gap || 1);
+    player.vel.x += nx * 2.4;
+    player.vel.y += nz * 2.4;
+    log('A hand lands flat on your chest. It does not push. It holds.', 'bad');
+  }
 
   const moving = player.vel.length() > 0.65;
   const staring = gazeDot(peek) > 0.985;
@@ -3183,7 +3217,7 @@ function updateCorridorPeek(dt) {
   if (near && !peek.hinted) {
     peek.hinted = true;
     state.shake = Math.max(state.shake, 0.16);
-    log('It fills the corridor and will not move. PRESS E to shift past.', 'bad');
+    log('It fills the corridor. PRESS E to shift past — and move slowly.', 'bad');
   }
 
   if (peek.life > 9 || peek.blocked > 6) {
@@ -3222,19 +3256,18 @@ function shoveCorridorPeek() {
   const gap = Math.hypot(peek.x - player.pos.x, peek.z - player.pos.z);
   if (gap > 2.6) return false;
 
+  // No jumpscare: it just turns its head and watches you squeeze past.
   peek.pushed = true;
-  world.hidePeek();
-  state.corridorPeek = null;
-  audio.scurry(panFor(peek), 0.15);
+  peek.turned = true;
+  peek.turnFor = 0;
+  peek.contacted = true;
+  player.vel.set(0, 0);
+  world.peekTurnHead();
   audio.whisper();
-  state.shake = Math.max(state.shake, 0.5);
+  audio.creak();
+  state.shake = Math.max(state.shake, 0.2);
 
-  const forwardX = -Math.sin(player.yaw);
-  const forwardZ = -Math.cos(player.yaw);
-  player.vel.x += forwardX * 2.6;
-  player.vel.y += forwardZ * 2.6;
-
-  log('You shift round it. The corridor behind you is empty.', 'ghostly');
+  log('It turns to watch you. Keep moving slowly and it stays put.', 'ghostly');
   return true;
 }
 

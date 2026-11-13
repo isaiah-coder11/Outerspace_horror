@@ -343,6 +343,42 @@ export class AudioEngine {
     src.stop(t + 0.2);
   }
 
+  // A flat palm landing on the chest plate: a low drop with a dull slap on
+  // top, so it reads as a hand rather than a drum.
+  thud(volume = 0.6) {
+    if (!this.ready) return;
+    const ctx = this.ctx;
+    const t = ctx.currentTime + 0.01;
+
+    const osc = ctx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(120, t);
+    osc.frequency.exponentialRampToValueAtTime(42, t + 0.22);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(Math.max(0.0001, 0.5 * volume), t + 0.012);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.4);
+    osc.connect(g);
+    g.connect(this.master);
+    osc.start(t);
+    osc.stop(t + 0.44);
+
+    const src = ctx.createBufferSource();
+    src.buffer = this.noise;
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.value = 900;
+    const ng = ctx.createGain();
+    ng.gain.setValueAtTime(0.0001, t);
+    ng.gain.exponentialRampToValueAtTime(Math.max(0.0001, 0.26 * volume), t + 0.008);
+    ng.gain.exponentialRampToValueAtTime(0.0001, t + 0.17);
+    src.connect(lp);
+    lp.connect(ng);
+    ng.connect(this.master);
+    src.start(t);
+    src.stop(t + 0.2);
+  }
+
   step() {
     if (!this.ready) return;
     const now = this.ctx.currentTime;
