@@ -104,8 +104,8 @@ the run is the quieter, worse kind of failure.
 - From **Day 3**, unfinished maintenance costs **−10%** ship control that night.
   Finish all three tasks and the hull holds: there is no flat decay for a stable
   ship.
-- From **Day 5** hull cracks open on walls and floors, each tracked by a
-  waypoint. A crack costs its own severity in ship control every night and
+- From **Day 5** hull cracks open on walls and floors. A crack costs its own
+  severity in ship control every night and
   widens by 1% a night, to a 5% maximum, at which point another crack tears
   open. Welding a crack costs a single reserve of any kind and takes 1% off it.
 - At **0%** the run ends. Whatever ends the run — the hull giving out or the
@@ -125,7 +125,6 @@ The pod also stays sealed while hub security is below **30%**, so a failing ship
 cannot be abandoned. Once control is back above 30%, the clamps still refuse
 while any job is unfinished or any hull crack is open. A refusal spends nothing,
 so the reserves the jobs and welds demand are exactly the reserves the pod wants.
-The bay is always marked with a waypoint.
 
 ## Corridors and vents
 
@@ -195,16 +194,16 @@ another bay, so a shift is a loop between the stores and the work. The opening d
 Day 1 uses simple service tasks, Day 2 introduces sequences, and every archetype
 is in rotation from Day 3.
 
-On-screen pointers show every unfinished room through the walls, with the
-distance. Inside a room, the pointers switch to the individual units that stillneed attention; sequence tasks mark only the next unit. When all three rooms are
-done, a pointer marks the cryo pod. Completing a room makes the ship a
-little louder.
+Nothing on the ship is marked unless you ask for it. Clicking a compartment's
+row in the **Today's jobs** panel — or pressing `1`, `2` or `3` — is the waypoint
+control, and it marks that job and nothing else: the next unit that still needs
+attention (sequence tasks mark only the next one), and, while you are not
+carrying the tool, the locker that stocks it. So a stalled repair points at both
+the work and the tool in one look.
 
-Clicking a compartment's row in the **Today's jobs** panel — or pressing `1`, `2`
-or `3` — marks the bay that produces the reserve that compartment burns, so a
-stalled repair points straight at its supply. The row's amber line names both
-(`⌖ GET BIO FROM HYDRO — CLICK TO MARK IT`), and the waypoint clears once you
-walk into that bay.
+Pressing the same row again clears them, and with nothing selected the screen
+carries no pointers at all — no cracks, no pod, no other bays. The row itself
+lights up while it owns the waypoints, and the log line names the two stops.
 
 ## Today's jobs
 

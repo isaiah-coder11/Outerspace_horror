@@ -340,6 +340,7 @@ const state = {
   patches: [],
   shake: 0,
   tasks: {},
+  focusTask: null,
   completedCount: 0,
   lastPicks: {},
   uiBlocking: null, // null | 'modal' | 'night' | 'gameover'
@@ -1103,7 +1104,7 @@ function refreshTasks() {
     const task = state.tasks[roomId];
     const meta = ROOM_META[roomId];
     const li = document.createElement('li');
-    li.className = `task${task && task.complete ? ' done' : ''}`;
+    li.className = `task${task && task.complete ? ' done' : ''}${state.focusTask === roomId ? ' focused' : ''}`;
 
     const head = document.createElement('div');
     head.className = 'task-head';
@@ -1151,13 +1152,13 @@ function refreshTasks() {
       const meta = RESOURCE_META[flow.cost];
       const source = document.createElement('div');
       source.className = 'task-source';
-      source.textContent = `⌖ GET ${meta.short} FROM ${ROOM_META[meta.room].short} — CLICK TO MARK IT`;
+      source.textContent = `⌖ ${meta.short} FROM ${ROOM_META[meta.room].short} — CLICK TO SET WAYPOINTS`;
 
       li.append(head, title, why, hint, toolLine, source);
       li.classList.add('clickable');
       li.tabIndex = 0;
       li.setAttribute('role', 'button');
-      li.title = `Waypoint to where ${meta.label} is made — click or press ${TASK_ROW_KEYS[roomId]}`;
+      li.title = `Show waypoints for this task and its tool — click or press ${TASK_ROW_KEYS[roomId]}`;
       li.addEventListener('click', () => focusReserve(roomId));
       li.addEventListener('keydown', (event) => {
         if (event.key !== 'Enter' && event.key !== ' ') return;
@@ -1288,24 +1289,35 @@ function startTask(roomId, def) {
   return task;
 }
 
-// Clicking a row (or pressing its number) marks the bay that makes the
-// reserve the compartment burns, so a stalled repair points at its supply.
+// Clicking a row (or pressing its number) is the waypoint control: it marks
+// that task only — the next unit to work on and the locker that stocks its
+// tool — and marks nothing else on the ship.
 function focusReserve(roomId) {
   if (state.phase !== 'day' || state.uiBlocking) return;
 
-  const flow = RESOURCE_FLOW[roomId];
-  if (!flow) return;
+  if (state.focusTask === roomId) {
+    state.focusTask = null;
+    audio.beep(420, 0.07, 'sine', 0.04);
+    log('WAYPOINTS CLEARED.', 'ghostly');
+    refreshTasks();
+    return;
+  }
 
-  const key = flow.cost;
-  const meta = RESOURCE_META[key];
-  if (!meta || !meta.room || !ROOM_META[meta.room]) return;
+  const task = state.tasks[roomId];
+  if (!task || task.complete) return;
 
-  reservePointer = { key, room: meta.room };
+  state.focusTask = roomId;
   audio.beep(660, 0.08, 'sine', 0.045);
+
+  const toolKey = ROOM_TOOL[roomId];
+  const needsTool = toolKey && !hasTool(toolKey);
   log(
-    `${meta.label} ${Math.floor(state.resources[key] ?? 0)} — WAYPOINT SET TO ${ROOM_META[meta.room].name}.`,
+    needsTool
+      ? `WAYPOINTS SET — ${ROOM_META[roomId].name.toUpperCase()}, THEN ${TOOL_META[toolKey].storeName.toUpperCase()}.`
+      : `WAYPOINTS SET — ${ROOM_META[roomId].name.toUpperCase()}.`,
     'warn',
   );
+  refreshTasks();
 }
 
 function onTaskComplete(task) {
@@ -1334,6 +1346,7 @@ function startDay(savedTasks = null, options = {}) {
   const { keepTime = false, keepHarvest = false } = options;
 
   reservePointer = null;
+  state.focusTask = null;
   state.ventEvent = null;
   state.ventPeek = null;
   state.corridorPeek = null;
@@ -3536,151 +3549,53 @@ function updateWaypoints(dt) {
 
   if (!active) return;
 
-  // From outside a bay the pointer aims at the actual unit that still
-  // needs work — the next one in a sequence, the nearest one otherwise —
-  // not at the bay's centre. The walk is to a thing, not a room.
-  ['reactor', 'med', 'nav'].forEach((roomId) => {
-    const task = state.tasks[roomId];
-    if (!task || task.complete || currentRoom === roomId) return;
-    if (typeof task.getTargets !== 'function') return;
+  // One task at a time, and nothing else. Pressing a task on the panel marks
+  // that task's next unit and the locker that stocks its tool; the rest of
+  // the ship stays unmarked so the screen is never a field of pointers.
+  const roomId = state.focusTask;
+  if (!roomId) return;
 
-    const meta = ROOM_META[roomId];
-    const toolKey = ROOM_TOOL[roomId];
+  const task = state.tasks[roomId];
+  const meta = ROOM_META[roomId];
+  if (!task || !meta || task.complete) return;
 
-    // No tool, no work: send the player to the locker that stocks it.
-    if (toolKey && !hasTool(toolKey)) {
-      const storeRoom = TOOL_META[toolKey].store;
-      const storeEntry = waypointEls.get(`store:${storeRoom}`);
-      const storeAnchor = STORE_ANCHORS[storeRoom];
+  const toolKey = ROOM_TOOL[roomId];
+  if (toolKey && !hasTool(toolKey)) {
+    const storeRoom = TOOL_META[toolKey].store;
+    const entry = waypointEls.get(`store:${storeRoom}`);
+    const anchor = STORE_ANCHORS[storeRoom];
 
-      if (storeEntry && storeAnchor) {
-        storeEntry.el.classList.add('next');
-        drawWaypoint(
-          storeEntry,
-          { ...storeAnchor, label: `${TOOL_META[toolKey].label} · ${ROOM_META[storeRoom].short}` },
-          cameraPos,
-          width,
-          height,
-          false,
-        );
-      }
-      return;
-    }
-
-    const pending = task.getTargets().filter((target) => target.active);
-    if (!pending.length) return;
-
-    const nearest = pending.reduce((best, target) => {
-      const distance = cameraPos.distanceTo(new THREE.Vector3(target.x, target.y, target.z));
-      return !best || distance < best.distance ? { target, distance } : best;
-    }, null);
-
-    const entry = waypointEls.get(`${roomId}:${nearest.target.index}`);
-    if (!entry) return;
-
-    entry.el.classList.add('next');
-    drawWaypoint(
-      entry,
-      { ...nearest.target, label: `${meta.short} · ${nearest.target.unit ?? nearest.target.label}` },
-      cameraPos,
-      width,
-      height,
-      false,
-    );
-  });
-
-  // An open crack is always marked, in whatever room it opened.
-  state.cracks.forEach((crack) => {
-    const slot = world.crackSlots[crack.slot];
-    const entry = waypointEls.get(`crack:${crack.slot}`);
-    if (!slot || !entry) return;
-
-    entry.el.classList.add('next');
-    drawWaypoint(
-      entry,
-      { x: slot.x, y: slot.y, z: slot.z, label: `CRACK ${crack.severity}%` },
-      cameraPos,
-      width,
-      height,
-      false,
-    );
-  });
-
-  // A clicked task keeps pointing at the bay that makes its reserve
-  // until the player walks into that bay.
-  if (reservePointer) {
-    if (currentRoom === reservePointer.room) {
-      reservePointer = null;
-    } else {
-      const entry = waypointEls.get('reserve');
-      const anchor = ROOM_POINTER_ANCHORS[reservePointer.room];
-      const meta = RESOURCE_META[reservePointer.key];
-
-      if (entry && anchor && meta) {
-        entry.el.classList.add('next');
-        drawWaypoint(
-          entry,
-          { ...anchor, label: `${meta.short} · ${ROOM_META[reservePointer.room].short}` },
-          cameraPos,
-          width,
-          height,
-          false,
-        );
-      }
-    }
-  }
-
-  if (['reactor', 'med', 'nav'].includes(currentRoom)) {
-    const task = state.tasks[currentRoom];
-    const toolKey = ROOM_TOOL[currentRoom];
-    const missingTool = task && !task.complete && toolKey && !hasTool(toolKey);
-
-    // Without the tool the units cannot be worked on, so point at the
-    // locker that stocks it instead of the units.
-    if (missingTool) {
-      const storeRoom = TOOL_META[toolKey].store;
-      const entry = waypointEls.get(`store:${storeRoom}`);
-      const anchor = STORE_ANCHORS[storeRoom];
-
-      if (entry && anchor) {
-        entry.el.classList.add('next');
-        drawWaypoint(entry, { ...anchor, label: TOOL_META[toolKey].label }, cameraPos, width, height, false);
-      }
-    } else if (task && !task.complete && typeof task.getTargets === 'function') {
-      task.getTargets().forEach((target) => {
-        if (!target.active) return;
-
-        const entry = waypointEls.get(`${currentRoom}:${target.index}`);
-        if (!entry) return;
-
-        entry.el.classList.add('next');
-        drawWaypoint(entry, target, cameraPos, width, height, false);
-      });
-    }
-  }
-
-  // The escape bay is always marked: it is the way off the ship.
-  if (currentRoom !== 'escape') {
-    const podEntry = waypointEls.get('escape');
-    if (podEntry) {
-      podEntry.el.classList.add('next');
+    if (entry && anchor) {
       drawWaypoint(
-        podEntry,
-        { x: 0, y: 2.4, z: 26.4, label: state.podBuilt ? 'ESCAPE POD' : 'ESCAPE BAY' },
+        entry,
+        { ...anchor, label: `TOOL · ${TOOL_META[toolKey].label}` },
         cameraPos,
         width,
         height,
-        true,
+        false,
       );
     }
   }
 
-  if (state.completedCount === 3) {
-    const entry = waypointEls.get('pod');
-    if (entry) {
-      const distance = cameraPos.distanceTo(new THREE.Vector3(POD_POINTER.x, POD_POINTER.y, POD_POINTER.z));
-      if (distance > 2.4) {
-        drawWaypoint(entry, { ...POD_POINTER, label: 'CRYO POD' }, cameraPos, width, height, true);
+  if (typeof task.getTargets === 'function') {
+    const pending = task.getTargets().filter((target) => target.active);
+    if (pending.length) {
+      const nearest = pending.reduce((best, target) => {
+        const distance = cameraPos.distanceTo(new THREE.Vector3(target.x, target.y, target.z));
+        return !best || distance < best.distance ? { target, distance } : best;
+      }, null);
+
+      const entry = waypointEls.get(`${roomId}:${nearest.target.index}`);
+      if (entry) {
+        entry.el.classList.add('next');
+        drawWaypoint(
+          entry,
+          { ...nearest.target, label: `${meta.short} · ${nearest.target.unit ?? nearest.target.label}` },
+          cameraPos,
+          width,
+          height,
+          false,
+        );
       }
     }
   }
