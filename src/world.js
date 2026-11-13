@@ -1535,6 +1535,12 @@ export function createWorld(scene) {
 
   let peekMode = 'idle'; // idle | vent | corridor
   let peekLife = 0;
+  // Where the corridor pose started, and the axes it drifts along.
+  const peekOrigin = new THREE.Vector3();
+  const peekRight = new THREE.Vector3();
+  const peekForward = new THREE.Vector3();
+  let peekSide = 1;
+  let peekDrift = 0;
 
   // ── dust ──────────────────────────────────────────────────
   const dust = addDust();
@@ -1791,6 +1797,21 @@ export function createWorld(scene) {
         tooth.rotation.x = Math.PI + Math.sin(elapsed * 26 + index) * vent.stir * 0.25;
       });
     });
+
+    // The corridor pose is not a photograph: it steps out from behind the
+    // frame, shifts its weight, and leans a little into the passage.
+    if (peekMode === 'corridor' && peeker.group.visible) {
+      peekDrift += dt;
+      const stepOut = Math.min(0.8, peekDrift * 0.1);
+      const sway = Math.sin(peekDrift * 1.15) * 0.24 + Math.sin(peekDrift * 2.7) * 0.06;
+      const lateral = (2.75 - stepOut) * peekSide;
+      const px = peekOrigin.x + peekRight.x * lateral + peekForward.x * sway;
+      const pz = peekOrigin.z + peekRight.z * lateral + peekForward.z * sway;
+      peeker.group.position.set(px, 0, pz);
+      peeker.group.rotation.y = Math.atan2(camera.position.x - px, camera.position.z - pz);
+      peeker.head.rotation.y = peekSide * 0.42 + Math.sin(peekDrift * 0.8) * 0.1;
+      peeker.head.rotation.z = peekSide * 0.16 + Math.sin(peekDrift * 1.6) * 0.06;
+    }
 
     if (finalLife > 0) {
       finalLife -= dt;
@@ -2197,11 +2218,19 @@ export function createWorld(scene) {
 
     const forward = new THREE.Vector3();
     camera.getWorldDirection(forward);
+    forward.y = 0;
+    forward.normalize();
     const right = new THREE.Vector3(-forward.z, 0, forward.x);
     const side = Math.random() < 0.5 ? -1 : 1;
     // Far enough past the jamb that the wall takes the rest of it.
     const x = spot.x + right.x * 2.75 * side;
     const z = spot.z + right.z * 2.75 * side;
+
+    peekOrigin.set(spot.x, 0, spot.z);
+    peekRight.copy(right);
+    peekForward.copy(forward);
+    peekSide = side;
+    peekDrift = 0;
 
     peeker.group.position.set(x, 0, z);
     peeker.group.scale.setScalar(1.02);
@@ -2264,6 +2293,7 @@ export function createWorld(scene) {
     ventScare,
     ventScareAt,
     stirVent,
+    ventFace: (index) => (ventEntries[index] ? ventEntries[index].presence : 0),
     vents: ventEntries.map((vent) => ({
       x: vent.group.position.x,
       y: vent.group.position.y,
@@ -2282,6 +2312,11 @@ export function createWorld(scene) {
     showCorridorPeek,
     hidePeek,
     setPeekVisible,
+    peekPos: () => ({
+      x: peeker.group.position.x,
+      z: peeker.group.position.z,
+      visible: peeker.group.visible,
+    }),
     consumeGhostVanish,
     consumeLurkerVanish: () => {
       const value = lurkerVanished;

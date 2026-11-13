@@ -24,7 +24,7 @@ Requires a browser with WebGL and a mouse + keyboard.
 | `W` `A` `S` `D` / arrows | move |
 | mouse | look (pointer lock; if the cursor stays visible, hold left click and drag) |
 | `Shift` | run |
-| `E` | interact / confirm |
+| `E` | interact / confirm / shift past the thing standing in the corridor |
 | `Q` | close the end-shift dialog |
 | `Esc` | pause |
 
@@ -143,13 +143,15 @@ how much of the ship you still hold:
 | Ship control | Vents |
 | --- | --- |
 | 100–80 | They watch — but not always and not everywhere. A grate is often just a grate: the pale eyes and teeth surface in its throat for a few seconds and sink back, each vent on its own clock, longer and more often as control falls. Now and then a face leans out of a grate at an angle, half behind the slats, stays for a breath or two, and is gone — then back at another grate, at no set rhythm. Meet its eyes and it leaves at once, and you hear it moving away inside the wall. |
-| 80–50 | The grate rattles as you pass and the visor fogs red with scanlines while something inside breathes. Tense, never a jumpscare. |
+| 80–50 | The grate rattles as you pass, and when the eyes are actually out the visor fogs red with scanlines. No face in the grate, no red — walking past a vent is not a scare on its own. Tense, never a jumpscare. |
 | 50–20 | The jumpscare is real: lean in close and the thing lunges out of the wall. It never costs ship control, so it cannot end the run. |
 | 20–0 | It comes all the way out of a vent, and then it hunts. |
 
 Walk a corridor and a head and shoulder may be waiting just past the far door
 frame, in the room you are heading toward. It is only there while you are
-actually walking: stop and the doorway is empty, stare and it slips back.
+actually walking: stop and the doorway is empty, stare and it slips back. If you
+keep going it steps out from behind the frame and plants itself in the way — you
+stop against it, and `E` is how you shift round it.
 
 Standing in a compartment and working a repair also draws whispers — finishing a
 task does not mean the room has stopped watching.

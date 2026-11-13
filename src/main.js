@@ -1944,6 +1944,7 @@ canvas.addEventListener('mousedown', () => {
   if (state.started && state.phase === 'day' && !state.uiBlocking) dragging = true;
 });
 
+
 window.addEventListener('mouseup', () => {
   dragging = false;
 });
@@ -1987,8 +1988,11 @@ window.addEventListener('keydown', (event) => {
       confirmSleep();
       return;
     }
-    if (state.started && state.phase === 'day' && !state.uiBlocking && hovered) {
-      hovered.onInteract();
+    if (state.started && state.phase === 'day' && !state.uiBlocking) {
+      // Something standing in the corridor takes the interact key: E is how
+      // you shift past it.
+      if (shoveCorridorPeek()) return;
+      if (hovered) hovered.onInteract();
     }
     return;
   }
@@ -2256,6 +2260,9 @@ function updatePlayer(dt, time) {
 
     if (!moving && player.vel.lengthSq() < 0.0004) player.vel.set(0, 0);
 
+    // Whatever stands in the corridor does not let you walk through it: you
+    // stop against it and have to go round, or shove.
+
     const stepX = player.vel.x * dt;
     const stepZ = player.vel.y * dt;
 
@@ -2266,6 +2273,22 @@ function updatePlayer(dt, time) {
     if (stepZ !== 0) {
       if (canStand(player.pos.x, player.pos.z + stepZ)) player.pos.z += stepZ;
       else player.vel.y = 0;
+    }
+
+    // It holds its ground. Walking into it stops you short of the doorway.
+    if (state.corridorPeek && !state.corridorPeek.pushed) {
+      const px = player.pos.x - state.corridorPeek.x;
+      const pz = player.pos.z - state.corridorPeek.z;
+      const gap = Math.hypot(px, pz);
+      if (gap > 0.001 && gap < 1.9) {
+        const outX = state.corridorPeek.x + (px / gap) * 1.9;
+        const outZ = state.corridorPeek.z + (pz / gap) * 1.9;
+        if (canStand(outX, outZ)) {
+          player.pos.x = outX;
+          player.pos.z = outZ;
+          player.vel.set(0, 0);
+        }
+      }
     }
 
     const speed = player.vel.length();
@@ -2513,10 +2536,17 @@ function updateVentHazard(dt) {
 
   if (!nearest) {
     state.ventEvent = null;
+    ventFx.classList.remove('on');
     return;
   }
 
   world.stirVent(nearest.index, clamp(1 - nearest.dist / 6, 0, 1));
+
+  // The visor only reddens when there is actually something in the grate:
+  // proximity alone is not a scare, and being near a vent all day is not
+  // either.
+  const faceOut = world.ventFace(nearest.index) > 0.55;
+  ventFx.classList.toggle('on', faceOut && nearest.dist < 3.4);
 
   // 80-50: the vents breathe on their own now and then, so a corridor is
   // never quiet — but nothing comes out of them.
@@ -2538,7 +2568,6 @@ function updateVentHazard(dt) {
   if (state.ventEvent) {
     if (state.ventEvent.index !== nearest.index || nearest.dist > 3.1) {
       state.ventEvent = null;
-      ventFx.classList.remove('on');
     } else {
       state.ventEvent.time += dt;
       state.shake = Math.max(state.shake, 0.2 + state.ventEvent.time * 0.12);
@@ -2552,7 +2581,6 @@ function updateVentHazard(dt) {
       if (state.ventEvent.time > (tier >= 2 ? 3.4 : 2.6)) {
         state.ventEvent = null;
         state.ventCooldown = VENT_COOLDOWNS[tier] || 12;
-        ventFx.classList.remove('on');
       }
       return;
     }
@@ -2560,7 +2588,6 @@ function updateVentHazard(dt) {
 
   if (nearest.dist < 2.5 && state.ventCooldown <= 0) {
     state.ventEvent = { index: nearest.index, time: 0 };
-    ventFx.classList.add('on');
     audio.breathe(1);
     audio.whisper();
     world.flicker(2.6);
@@ -2574,6 +2601,7 @@ function burstVent(index) {
   state.ventEvent = null;
   state.ventCooldown = 20;
   ventFx.classList.remove('on');
+  // (the visor class is re-derived every frame from what is in the grate)
 
   world.stirVent(index, 1);
   world.flicker(3.2);
@@ -3129,13 +3157,29 @@ function updateCorridorPeek(dt) {
 
   peek.life += dt;
 
+  // Track where it actually is: it drifts out of the frame as you watch.
+  const pos = world.peekPos();
+  peek.x = pos.x;
+  peek.z = pos.z;
+
+  const gap = Math.hypot(peek.x - player.pos.x, peek.z - player.pos.z);
+  const near = gap < 2.3;
+  peek.blocked = near ? (peek.blocked || 0) + dt : 0;
+
   const moving = player.vel.length() > 0.65;
   const staring = gazeDot(peek) > 0.985;
   peek.stare = staring ? (peek.stare || 0) + dt : 0;
 
-  if (peek.life > 9) {
+  if (near && !peek.hinted) {
+    peek.hinted = true;
+    state.shake = Math.max(state.shake, 0.16);
+    log('It fills the corridor and will not move. PRESS E to shift past.', 'bad');
+  }
+
+  if (peek.life > 9 || peek.blocked > 6) {
     world.hidePeek();
     state.corridorPeek = null;
+    audio.scurry(panFor(peek), 0.1);
     return;
   }
 
@@ -3146,8 +3190,9 @@ function updateCorridorPeek(dt) {
     return;
   }
 
-  // It only exists in motion: stop walking and the doorway is empty.
-  if (!moving) {
+  // It only exists in motion: stop walking and the doorway is empty —
+  // unless it has planted itself in front of you.
+  if (!moving && !near) {
     world.hidePeek();
     state.corridorPeek = null;
     audio.scurry(panFor(peek), 0.08);
@@ -3155,6 +3200,30 @@ function updateCorridorPeek(dt) {
   }
 
   world.setPeekVisible(true);
+}
+
+// E in the corridor: shift round the thing that will not let you past.
+function shoveCorridorPeek() {
+  const peek = state.corridorPeek;
+  if (!peek || peek.pushed) return false;
+
+  const gap = Math.hypot(peek.x - player.pos.x, peek.z - player.pos.z);
+  if (gap > 2.6) return false;
+
+  peek.pushed = true;
+  world.hidePeek();
+  state.corridorPeek = null;
+  audio.scurry(panFor(peek), 0.15);
+  audio.whisper();
+  state.shake = Math.max(state.shake, 0.5);
+
+  const forwardX = -Math.sin(player.yaw);
+  const forwardZ = -Math.cos(player.yaw);
+  player.vel.x += forwardX * 2.6;
+  player.vel.y += forwardZ * 2.6;
+
+  log('You shift round it. The corridor behind you is empty.', 'ghostly');
+  return true;
 }
 
 function updateMonster(dt) {
