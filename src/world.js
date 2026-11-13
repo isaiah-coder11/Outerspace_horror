@@ -1481,6 +1481,7 @@ export function createWorld(scene) {
     vent.add(grate);
 
     root.add(vent);
+    const startsOpen = Math.random() < 0.3;
     ventEntries.push({
       group: vent,
       eyeMat,
@@ -1491,6 +1492,11 @@ export function createWorld(scene) {
       baseOpacity: 0.14,
       seed: Math.random() * 10,
       stir: 0,
+      // The face in the grate is not a fixture: it comes and goes.
+      showing: startsOpen,
+      presence: startsOpen ? 1 : 0,
+      presenceTimer: 1.5 + Math.random() * 6,
+      alert: 0,
     });
   });
 
@@ -1759,8 +1765,20 @@ export function createWorld(scene) {
     });
 
     ventEntries.forEach((vent) => {
-      const blink = Math.sin(elapsed * 0.7 + vent.seed) > 0.972 ? 0.06 : 1;
-      vent.eyeMat.opacity = Math.max(0.04, vent.baseOpacity * blink);
+      // Half the time a grate is just a grate. The eyes surface for a few
+      // seconds, sink back into the dark, and come up somewhere else later.
+      vent.presenceTimer -= dt;
+      if (vent.presenceTimer <= 0) {
+        vent.showing = !vent.showing;
+        vent.presenceTimer = vent.showing
+          ? 0.9 + Math.random() * (1.8 + vent.alert * 2.2)
+          : 3.5 + Math.random() * (8 - vent.alert * 3.5);
+      }
+      vent.presence += ((vent.showing ? 1 : 0) - vent.presence) * Math.min(1, dt * 6);
+      if (vent.presence < 0.004) vent.presence = 0;
+
+      const blink = Math.sin(elapsed * 0.7 + vent.seed) > 0.972 ? 0.1 : 1;
+      vent.eyeMat.opacity = vent.baseOpacity * blink * vent.presence;
 
       // A vent near the player starts to shake itself open.
       vent.stir = Math.max(0, vent.stir - dt * 0.35);
@@ -1768,7 +1786,7 @@ export function createWorld(scene) {
       vent.grate.position.x = Math.sin(elapsed * 47 + vent.seed) * shudder;
       vent.grate.rotation.z = Math.sin(elapsed * 39 + vent.seed) * shudder * 0.8;
       vent.throatMat.opacity = 0.36 + vent.stir * 0.55;
-      vent.teethMat.opacity = Math.min(0.95, vent.stir * 1.35);
+      vent.teethMat.opacity = Math.min(0.95, Math.max(vent.stir * 1.35, vent.presence * 0.7));
       vent.teeth.forEach((tooth, index) => {
         tooth.rotation.x = Math.PI + Math.sin(elapsed * 26 + index) * vent.stir * 0.25;
       });
@@ -1967,6 +1985,7 @@ export function createWorld(scene) {
 
     ventEntries.forEach((vent, index) => {
       vent.baseOpacity = 0.2 + dread * 0.8 * (index === 0 ? 1 : 0.85);
+      vent.alert = dread;
       vent.eyeMat.color.setHex(dread > 0.55 ? 0xffd7c2 : 0xf2eee6);
       vent.throatMat.color.setHex(dread > 0.5 ? 0x410b05 : 0x2a0806);
     });
