@@ -194,16 +194,21 @@ another bay, so a shift is a loop between the stores and the work. The opening d
 Day 1 uses simple service tasks, Day 2 introduces sequences, and every archetype
 is in rotation from Day 3.
 
-Nothing on the ship is marked unless you ask for it. Clicking a compartment's
-row in the **Today's jobs** panel — or pressing `1`, `2` or `3` — is the waypoint
-control, and it marks that job and nothing else: the next unit that still needs
-attention (sequence tasks mark only the next one), and, while you are not
-carrying the tool, the locker that stocks it. So a stalled repair points at both
-the work and the tool in one look.
+Nothing on the ship is marked unless you ask for it, and you never get more
+than one pointer at a time. Clicking a compartment's row in the **Today's jobs**
+panel — or pressing `1`, `2` or `3` — puts a single mark on the first unit of
+that job that still needs attention (sequence tasks mark only the next one in
+the order).
 
-Pressing the same row again clears them, and with nothing selected the screen
+Press `E` on that unit and the mark moves to where the repair is short: the
+locker that stocks the tool if you are not carrying it, otherwise the bay that
+makes the reserve the job burns (a reactor valve sends it to **HYDRO · BIO**).
+Press anything in that bay and it comes back to the work, so the marker walks
+you round the loop one stop at a time.
+
+Pressing the same row again clears it, and with nothing selected the screen
 carries no pointers at all — no cracks, no pod, no other bays. The row itself
-lights up while it owns the waypoints, and the log line names the two stops.
+lights up while it owns the mark.
 
 Two things that are not jobs get their own buttons under the heading:
 **⌖ ESCAPE BAY** and **⌖ HULL CRACKS**, the second carrying the number of open

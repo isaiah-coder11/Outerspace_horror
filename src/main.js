@@ -344,6 +344,9 @@ const state = {
   shake: 0,
   tasks: {},
   focusTask: null,
+  // 'unit' marks the next thing to press; 'source' marks what that press is
+  // short of once it has been tried.
+  markPhase: 'unit',
   completedCount: 0,
   lastPicks: {},
   uiBlocking: null, // null | 'modal' | 'night' | 'gameover'
@@ -1156,13 +1159,13 @@ function refreshTasks() {
       const meta = RESOURCE_META[flow.cost];
       const source = document.createElement('div');
       source.className = 'task-source';
-      source.textContent = `⌖ ${meta.short} FROM ${ROOM_META[meta.room].short} — CLICK TO SET WAYPOINTS`;
+      source.textContent = `⌖ ${meta.short} FROM ${ROOM_META[meta.room].short} — PRESS E THERE`;
 
       li.append(head, title, why, hint, toolLine, source);
       li.classList.add('clickable');
       li.tabIndex = 0;
       li.setAttribute('role', 'button');
-      li.title = `Show waypoints for this task and its tool — click or press ${TASK_ROW_KEYS[roomId]}`;
+      li.title = `Show one waypoint for this task — click or press ${TASK_ROW_KEYS[roomId]}`;
       li.addEventListener('click', () => focusReserve(roomId));
       li.addEventListener('keydown', (event) => {
         if (event.key !== 'Enter' && event.key !== ' ') return;
@@ -1322,16 +1325,10 @@ function focusReserve(roomId) {
   if (!task || task.complete) return;
 
   state.focusTask = roomId;
+  state.markPhase = 'unit';
   audio.beep(660, 0.08, 'sine', 0.045);
 
-  const toolKey = ROOM_TOOL[roomId];
-  const needsTool = toolKey && !hasTool(toolKey);
-  log(
-    needsTool
-      ? `WAYPOINTS SET — ${ROOM_META[roomId].name.toUpperCase()}, THEN ${TOOL_META[toolKey].storeName.toUpperCase()}.`
-      : `WAYPOINTS SET — ${ROOM_META[roomId].name.toUpperCase()}.`,
-    'warn',
-  );
+  log(`WAYPOINT SET — ${ROOM_META[roomId].name.toUpperCase()}.`, 'warn');
   refreshTasks();
 }
 
@@ -1355,6 +1352,7 @@ function focusMark(kind) {
   }
 
   state.focusTask = kind;
+  state.markPhase = 'unit';
   audio.beep(660, 0.08, 'sine', 0.045);
 
   if (kind === 'escape') {
@@ -1368,6 +1366,40 @@ function focusMark(kind) {
 
 if (markEscapeBtn) markEscapeBtn.addEventListener('click', () => focusMark('escape'));
 if (markCracksBtn) markCracksBtn.addEventListener('click', () => focusMark('cracks'));
+
+// The one pointer follows the work. Pressing a job's unit hands the mark to
+// whatever the next press is short of; pressing anything in that bay hands it
+// back to the unit, so the ship never needs more than one marker at a time.
+function noteInteract(roomId) {
+  const focus = state.focusTask;
+  if (!focus || focus === 'escape' || focus === 'cracks') return;
+
+  const flow = RESOURCE_FLOW[focus];
+  const sourceRoom = flow ? RESOURCE_META[flow.cost].room : null;
+  const toolKey = ROOM_TOOL[focus];
+  const storeRoom = toolKey ? TOOL_META[toolKey].store : null;
+
+  if (state.markPhase === 'source') {
+    // Either stop ends the detour: the bay that makes the reserve, or the
+    // locker the tool comes from.
+    if (roomId === sourceRoom || roomId === storeRoom) {
+      state.markPhase = 'unit';
+      log(`WAYPOINT BACK ON ${ROOM_META[focus].short} — PRESS E THERE.`, 'ghostly');
+    }
+    return;
+  }
+
+  if (roomId !== focus) return;
+
+  state.markPhase = 'source';
+
+  if (toolKey && !hasTool(toolKey)) {
+    const meta = TOOL_META[toolKey];
+    log(`WAYPOINT — ${meta.storeName} (${ROOM_META[meta.store].short}) · ${meta.label}.`, 'ghostly');
+  } else if (flow) {
+    log(`WAYPOINT — ${ROOM_META[sourceRoom].short} · ${RESOURCE_META[flow.cost].short}.`, 'ghostly');
+  }
+}
 
 function onTaskComplete(task) {
   log(task.def.completeLine, 'good');
@@ -1396,6 +1428,7 @@ function startDay(savedTasks = null, options = {}) {
 
   reservePointer = null;
   state.focusTask = null;
+  state.markPhase = 'unit';
   state.ventEvent = null;
   state.ventPeek = null;
   state.corridorPeek = null;
@@ -2054,7 +2087,11 @@ window.addEventListener('keydown', (event) => {
       // Something standing in the corridor takes the interact key: E is how
       // you shift past it.
       if (shoveCorridorPeek()) return;
-      if (hovered) hovered.onInteract();
+      if (hovered) {
+        const room = hovered.room;
+        hovered.onInteract();
+        noteInteract(room);
+      }
     }
     return;
   }
@@ -3598,9 +3635,10 @@ function updateWaypoints(dt) {
 
   if (!active) return;
 
-  // One task at a time, and nothing else. Pressing a task on the panel marks
-  // that task's next unit and the locker that stocks its tool; the rest of
-  // the ship stays unmarked so the screen is never a field of pointers.
+  // One task at a time, and one marker at a time. Pressing a task on the panel
+  // marks the next unit it wants; after that unit is pressed the marker moves
+  // to what the press was short of. The rest of the ship stays unmarked so the
+  // screen is never a field of pointers.
   const roomId = state.focusTask;
   if (!roomId) return;
 
@@ -3644,22 +3682,30 @@ function updateWaypoints(dt) {
   const meta = ROOM_META[roomId];
   if (!task || !meta || task.complete) return;
 
-  const toolKey = ROOM_TOOL[roomId];
-  if (toolKey && !hasTool(toolKey)) {
-    const storeRoom = TOOL_META[toolKey].store;
-    const entry = waypointEls.get(`store:${storeRoom}`);
-    const anchor = STORE_ANCHORS[storeRoom];
+  // One marker, never two. Until the unit is worked the mark sits on the next
+  // thing to press; once it has been pressed the mark moves to whatever that
+  // press was short of — the tool locker, or the bay that makes the reserve.
+  if (state.markPhase === 'source') {
+    const toolKey = ROOM_TOOL[roomId];
+    const flow = RESOURCE_FLOW[roomId];
+    let point = null;
 
-    if (entry && anchor) {
-      drawWaypoint(
-        entry,
-        { ...anchor, label: `TOOL · ${TOOL_META[toolKey].label}` },
-        cameraPos,
-        width,
-        height,
-        false,
-      );
+    if (toolKey && !hasTool(toolKey)) {
+      const storeRoom = TOOL_META[toolKey].store;
+      const anchor = STORE_ANCHORS[storeRoom];
+      if (anchor) point = { ...anchor, label: `TOOL · ${TOOL_META[toolKey].label}` };
+    } else if (flow) {
+      const cost = RESOURCE_META[flow.cost];
+      const anchor = cost && ROOM_POINTER_ANCHORS[cost.room];
+      if (anchor) point = { ...anchor, label: `${cost.short} · ${ROOM_META[cost.room].short}` };
     }
+
+    const entry = waypointEls.get('reserve');
+    if (point && entry) {
+      entry.el.classList.add('next');
+      drawWaypoint(entry, point, cameraPos, width, height, false);
+    }
+    return;
   }
 
   if (typeof task.getTargets === 'function') {
