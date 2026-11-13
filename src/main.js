@@ -184,6 +184,9 @@ const lifeValue = $('#lifeValue');
 const dayLabel = $('#dayLabel');
 const taskCount = $('#taskCount');
 const taskList = $('#taskList');
+const markEscapeBtn = $('#markEscape');
+const markCracksBtn = $('#markCracks');
+const markCracksCount = $('#markCracksCount');
 const crosshair = $('#crosshair');
 const interactPrompt = $('#interactPrompt');
 const interactText = $('#interactText');
@@ -1067,6 +1070,7 @@ function syncCracks() {
   syncCrackTargets();
   buildWaypoints();
   updateDecayHint();
+  if (typeof refreshTasks === 'function') refreshTasks();
 }
 
 // Every open crack widens by a point a night. One already at its widest
@@ -1176,6 +1180,17 @@ function refreshTasks() {
   state.completedCount = done;
   taskCount.textContent = `${done}/3 TASKS`;
   updateReserveForecast();
+
+  if (markEscapeBtn) {
+    markEscapeBtn.dataset.active = String(state.focusTask === 'escape');
+  }
+  if (markCracksBtn) {
+    markCracksBtn.dataset.active = String(state.focusTask === 'cracks');
+    markCracksBtn.disabled = state.cracks.length === 0;
+  }
+  if (markCracksCount) {
+    markCracksCount.textContent = String(state.cracks.length);
+  }
 }
 
 function updateRoom() {
@@ -1319,6 +1334,40 @@ function focusReserve(roomId) {
   );
   refreshTasks();
 }
+
+// The escape bay and the hull cracks have no row of their own, so they get
+// a button each. Same rule as the jobs: one mark at a time, and pressing it
+// again clears it.
+function focusMark(kind) {
+  if (state.phase !== 'day' || state.uiBlocking) return;
+
+  if (state.focusTask === kind) {
+    state.focusTask = null;
+    audio.beep(420, 0.07, 'sine', 0.04);
+    log('WAYPOINTS CLEARED.', 'ghostly');
+    refreshTasks();
+    return;
+  }
+
+  if (kind === 'cracks' && !state.cracks.length) {
+    log('No open hull cracks to mark.', 'ghostly');
+    return;
+  }
+
+  state.focusTask = kind;
+  audio.beep(660, 0.08, 'sine', 0.045);
+
+  if (kind === 'escape') {
+    log(state.podBuilt ? 'WAYPOINT SET \u2014 ESCAPE POD.' : 'WAYPOINT SET \u2014 ESCAPE BAY.', 'warn');
+  } else {
+    const open = state.cracks.length;
+    log(`WAYPOINTS SET \u2014 ${open} OPEN HULL CRACK${open === 1 ? '' : 'S'}.`, 'warn');
+  }
+  refreshTasks();
+}
+
+if (markEscapeBtn) markEscapeBtn.addEventListener('click', () => focusMark('escape'));
+if (markCracksBtn) markCracksBtn.addEventListener('click', () => focusMark('cracks'));
 
 function onTaskComplete(task) {
   log(task.def.completeLine, 'good');
@@ -3554,6 +3603,42 @@ function updateWaypoints(dt) {
   // the ship stays unmarked so the screen is never a field of pointers.
   const roomId = state.focusTask;
   if (!roomId) return;
+
+  // Two marks that are not jobs: the way off the ship, and the hull.
+  if (roomId === 'escape') {
+    const entry = waypointEls.get('escape');
+    if (entry) {
+      entry.el.classList.add('next');
+      drawWaypoint(
+        entry,
+        { x: 0, y: 2.4, z: 26.4, label: state.podBuilt ? 'ESCAPE POD' : 'ESCAPE BAY' },
+        cameraPos,
+        width,
+        height,
+        true,
+      );
+    }
+    return;
+  }
+
+  if (roomId === 'cracks') {
+    state.cracks.forEach((crack) => {
+      const slot = world.crackSlots[crack.slot];
+      const entry = waypointEls.get(`crack:${crack.slot}`);
+      if (!slot || !entry) return;
+
+      entry.el.classList.add('next');
+      drawWaypoint(
+        entry,
+        { x: slot.x, y: slot.y, z: slot.z, label: `CRACK ${crack.severity}%` },
+        cameraPos,
+        width,
+        height,
+        false,
+      );
+    });
+    return;
+  }
 
   const task = state.tasks[roomId];
   const meta = ROOM_META[roomId];

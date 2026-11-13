@@ -98,6 +98,10 @@
         <aside id="taskPanel" aria-label="Daily maintenance">
           <h2>TODAY'S JOBS</h2>
           <p class="panel-lede">You are a passenger doing the crew's work. Every job keeps one system — and one reserve — alive.</p>
+          <div id="markRow" class="mark-row" aria-label="Waypoint shortcuts">
+            <button type="button" class="mark-btn" id="markEscape">⌖ ESCAPE BAY</button>
+            <button type="button" class="mark-btn" id="markCracks">⌖ HULL CRACKS <b id="markCracksCount">0</b></button>
+          </div>
           <ul id="taskList"></ul>
           <div id="reserves" class="reserves" aria-label="Compartment reserves">
             <span class="reserve" data-res="power">POWER <b id="resPower">30</b><i id="resPowerNext" class="reserve-next"></i></span>

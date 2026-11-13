@@ -205,6 +205,12 @@ Pressing the same row again clears them, and with nothing selected the screen
 carries no pointers at all — no cracks, no pod, no other bays. The row itself
 lights up while it owns the waypoints, and the log line names the two stops.
 
+Two things that are not jobs get their own buttons under the heading:
+**⌖ ESCAPE BAY** and **⌖ HULL CRACKS**, the second carrying the number of open
+cracks and dead when the hull is whole. They follow the same rule — one mark at
+a time, press again to clear — so the escape pod and the hull are one click
+away without ever being on screen unasked.
+
 ## Today's jobs
 
 Every row in the panel states the job, **why the ship needs it**, exactly what to

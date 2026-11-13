@@ -272,6 +272,38 @@ body { cursor: default; }
 .task.done .task-progress { color: var(--green); }
 .task.done .task-hint { color: rgba(111, 255, 196, 0.5); }
 
+.mark-row {
+  display: flex;
+  gap: 8px;
+  margin: 10px 0 12px;
+}
+
+.mark-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 7px;
+  font: inherit;
+  font-size: 7.6px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(200, 228, 238, 0.62);
+  background: rgba(127, 228, 255, 0.035);
+  border: 1px solid rgba(127, 228, 255, 0.16);
+  cursor: pointer;
+}
+
+.mark-btn b { font-weight: 500; color: rgba(127, 228, 255, 0.8); }
+.mark-btn:hover { color: #cfefff; border-color: rgba(127, 228, 255, 0.42); }
+.mark-btn[data-active="true"] {
+  color: #dff6ff;
+  border-color: rgba(127, 228, 255, 0.78);
+  background: rgba(127, 228, 255, 0.13);
+}
+.mark-btn:disabled { opacity: 0.38; cursor: default; }
+
 .task.focused {
   border-left-color: rgba(127, 228, 255, 0.8);
   background: linear-gradient(90deg, rgba(127, 228, 255, 0.09), transparent 72%);
