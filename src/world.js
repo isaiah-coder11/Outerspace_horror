@@ -1489,7 +1489,12 @@ export function createWorld(scene) {
       z: -9.4,
       ry: 0.2,
       flat: true,
-      text: 'Day 61. The manifest still lists nine of us. I counted six at mess, and Halden counted five.',
+      body: [
+        'Day 61. The manifest still lists nine of us. I counted six at mess, and Halden counted five.',
+        'It came aboard on the Vesta supply run. There was a tenth pod on the docking manifest with no name against it, and Command filed the extra as a clerical error. Nobody signed for it. Nobody has ever signed for it.',
+        'It does not breathe. Stand close enough in the dark and you can hear it not breathing.',
+        'I sleep with the light on now. It does not like the light. It waits for the lamps to fail, and lately they fail on their own.',
+      ],
     },
     {
       id: 'cabin4-b',
@@ -1498,7 +1503,12 @@ export function createWorld(scene) {
       y: 1.62,
       z: -11.4,
       ry: Math.PI / 2,
-      text: 'It learns the ship by walking it. That is why the lights go out in the order they do: it is going room to room.',
+      body: [
+        'It learns the ship by walking it. That is why the lights go out in the order they do: it is going room to room, and it takes the light with it.',
+        'It lives in the vents. Ikra said it slept in the duct above her bunk and that it hummed while it did, like a kettle a long way off. Ikra is not on the roster any more.',
+        'It uses our voices. Not what it heard us say — what it thinks we would say. That is how Halden went. It called him by name, in his mother\u2019s voice, from the corridor behind him.',
+        'It has no shadow in the vents. Watch the grate the next time the eyes come out and you will see it: eyes, teeth, and the wall behind them, with nothing in between.',
+      ],
     },
   ]);
 
@@ -1511,7 +1521,11 @@ export function createWorld(scene) {
       z: -22.7,
       ry: -0.15,
       flat: true,
-      text: 'Command says the hull is sound. I have welded the same seam four times and it opens again every night.',
+      body: [
+        'Command says the hull is sound. I have welded the same seam four times and it opens again every night.',
+        'The seams open from the inside. I have checked the welds. Something is working at them from the corridor, patiently, the way you work at a door you know will open eventually.',
+        'It is not trying to get in. It is trying to keep us in, and it is not in a hurry. It has been on this ship longer than we have.',
+      ],
     },
     {
       id: 'cabin7-b',
@@ -1520,7 +1534,12 @@ export function createWorld(scene) {
       y: 1.4,
       z: -24.6,
       ry: Math.PI / 2,
-      text: 'If you are reading this, you are the passenger. Do not answer it when it uses your name.',
+      body: [
+        'If you are reading this, you are the passenger. Do not answer it when it uses your name.',
+        'It does not see the way we see. It finds you by the sound of you moving and by the light you carry, which is why it stands still in the dark and lets you walk into it.',
+        'Put your light out and stand still and it will pass close enough that you could touch it. Do not.',
+        'It counts us. Every night it counts, and every night the number is smaller. Whatever the count is for, it is nearly finished.',
+      ],
     },
   ]);
 

@@ -235,8 +235,14 @@ board that has not updated since the crew left.
 Two cabins open off the north corridor, 4 and 7, left the way the crew left them:
 bunks that were never stripped, a desk with the terminal still on, a porthole onto
 the drift. Each cabin keeps two notes — a log, a torn page, an unsent report, a
-note with no date. Press `E` on one to read it; the panel counts how many of the
-four you have found, and there is a line waiting when you have all of them.
+note with no date.
+
+Press `E` on one and the page comes up in front of you: the sheet fills the screen
+as paper, the shift clock holds while you read, and `E`, `Esc` or a click puts it
+down. The notes are the crew's own record of the thing aboard — where it came
+from, how it hunts without eyes, why it keeps the lights failing, and what the
+count it keeps is for. The footer counts how many of the four you have found, and
+there is a line waiting when you have all of them.
 
 One cabin a run — picked at random, never both — has something waiting in its
 doorway. Step out of the room and it is standing a couple of metres inside,

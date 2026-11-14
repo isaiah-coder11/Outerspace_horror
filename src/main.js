@@ -220,6 +220,11 @@ const goLine = $('#goLine');
 const startBtn = $('#startBtn');
 const restartBtn = $('#restartBtn');
 const resumePanel = $('#resumePanel');
+const noteScreen = $('#noteScreen');
+const noteEyebrow = $('#noteEyebrow');
+const noteTitle = $('#noteTitle');
+const noteBody = $('#noteBody');
+const noteCount = $('#noteCount');
 const resumeBtn = $('#resumeBtn');
 const resumeMeta = $('#resumeMeta');
 const resetBtn = $('#resetBtn');
@@ -508,22 +513,56 @@ LOCKER_SPOTS.forEach((spot) => {
 
 const notesRead = new Set();
 
+// A note is read off the page, not shouted down the intercom: the room stops,
+// the shift clock stops, and you get the whole sheet.
+function openNote(note) {
+  const total = world.notes.length;
+  const index = world.notes.findIndex((entry) => entry.id === note.id);
+  const room = LAYOUT[note.room];
+
+  noteEyebrow.textContent = `CREW NOTE \u00b7 ${room ? room.label : 'CABIN'}`;
+  noteTitle.textContent = note.title;
+  noteBody.replaceChildren(
+    ...(note.body || []).map((line) => {
+      const p = document.createElement('p');
+      p.textContent = line;
+      return p;
+    }),
+  );
+  noteCount.textContent = `NOTE ${String(index + 1).padStart(2, '0')} OF ${String(total).padStart(2, '0')} \u00b7 ${notesRead.size} READ`;
+
+  state.uiBlocking = 'note';
+  noteScreen.classList.remove('hidden');
+  setHovered(null);
+  audio.beep(420, 0.08, 'sine', 0.04);
+}
+
+function closeNote() {
+  if (state.uiBlocking !== 'note') return;
+
+  noteScreen.classList.add('hidden');
+  state.uiBlocking = null;
+  audio.beep(230, 0.07, 'sine', 0.035);
+  if (state.hadLock && !document.pointerLockElement) showPause();
+}
+
+if (noteScreen) noteScreen.addEventListener('click', () => closeNote());
+
 function readCrewNote(note) {
   if (state.phase !== 'day' || state.uiBlocking) return;
 
   notesRead.add(note.id);
-  audio.beep(540, 0.09, 'sine', 0.04);
-  log(`${note.title.toUpperCase()} — ${note.text}`, 'ghostly');
-  world.flicker(1.5);
-  state.shake = Math.max(state.shake, 0.08);
+  openNote(note);
+  world.flicker(1.2);
 
+  log(`READ — ${note.title.toUpperCase()}.`, 'ghostly');
   window.setTimeout(() => {
     if (notesRead.size >= world.notes.length) {
       log('That is every note they left. Not one of them signed off.', 'warn');
     } else {
       log(`NOTES READ — ${notesRead.size}/${world.notes.length}.`, 'ghostly');
     }
-  }, 800);
+  }, 900);
 }
 
 world.notes.forEach((note) => {
@@ -2150,6 +2189,15 @@ window.addEventListener('mousemove', (event) => {
 
 window.addEventListener('keydown', (event) => {
   if (event.repeat) return;
+
+  // A note on the page owns the keyboard until it is put down.
+  if (state.uiBlocking === 'note') {
+    if (['KeyE', 'Escape', 'Enter', 'Space'].includes(event.code)) {
+      event.preventDefault();
+      closeNote();
+    }
+    return;
+  }
 
   if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.code)) {
     event.preventDefault();
