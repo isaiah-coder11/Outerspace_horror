@@ -64,9 +64,12 @@ const ROOM_BOXES = Object.entries(LAYOUT).map(([key, rect]) => {
 
 // Cabin doorways need their own overlap: a strip narrow enough that only the
 // opening is passable, not the wall either side of it.
+// The strip has to reach well past the wall on both sides: the walk test
+// insets every box by the player's radius, so two boxes that only touch leave
+// a gap twice that wide and the doorway becomes a wall.
 const CABIN_DOORS = [
-  { minX: -3.0, maxX: -2.0, minZ: -11.45, maxZ: -9.55 },
-  { minX: -3.0, maxX: -2.0, minZ: -24.65, maxZ: -22.75 },
+  { minX: -3.8, maxX: -1.6, minZ: -11.45, maxZ: -9.55 },
+  { minX: -3.8, maxX: -1.6, minZ: -24.65, maxZ: -22.75 },
 ];
 
 export const WALKABLE = [...ROOM_BOXES, ...CABIN_DOORS];

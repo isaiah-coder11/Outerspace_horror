@@ -347,6 +347,7 @@ const state = {
   standCooldown: 0,
   ventCooldown: 0,
   ventEvent: null,
+  ventLock: null,
   doorScare: null,
   ventHuntPending: 0,
   ventAmbient: 18,
@@ -2182,6 +2183,9 @@ window.addEventListener('mousemove', (event) => {
   // Drop it instead of snapping the helmet to the ceiling.
   if (Math.abs(lookX) > 220 || Math.abs(lookY) > 220) return;
 
+  // The vent has the helmet while it is lit up.
+  if (state.ventLock) return;
+
   const sensitivity = 0.0021;
   player.yawTarget -= lookX * sensitivity;
   player.pitchTarget = clamp(player.pitchTarget - lookY * sensitivity, -1.35, 1.35);
@@ -2755,6 +2759,31 @@ function emergeFromVent(index) {
   startHunt(vent ? huntNodeForPoint(vent.x, vent.z) : 'n');
 }
 
+// Turn the view onto a vent and hold it there for a moment.
+function lockOnVent(index) {
+  const vent = world.vents[index];
+  if (!vent) return;
+  state.ventLock = { x: vent.x, y: vent.y || 1.55, z: vent.z, time: 2 };
+}
+
+function updateVentLock(dt) {
+  const lock = state.ventLock;
+  if (!lock) return;
+  if (state.phase !== 'day' || state.uiBlocking || isPaused()) return;
+
+  lock.time -= dt;
+
+  const dx = lock.x - camera.position.x;
+  const dz = lock.z - camera.position.z;
+  const dy = lock.y - camera.position.y;
+  const horiz = Math.hypot(dx, dz) || 1;
+
+  player.yawTarget = Math.atan2(-dx, -dz);
+  player.pitchTarget = clamp(Math.atan2(dy, horiz), -1.2, 1.2);
+
+  if (lock.time <= 0) state.ventLock = null;
+}
+
 function updateVentHazard(dt) {
   if (!state.started || state.phase !== 'day' || state.uiBlocking || isPaused()) return;
 
@@ -2792,8 +2821,14 @@ function updateVentHazard(dt) {
   // The visor only reddens when there is actually something in the grate:
   // proximity alone is not a scare, and being near a vent all day is not
   // either.
+  const wasFaceOut = ventFx.classList.contains('on');
   const faceOut = world.ventFace(nearest.index) > 0.55;
-  ventFx.classList.toggle('on', faceOut && nearest.dist < 3.4);
+  const showVent = faceOut && nearest.dist < 3.4;
+  ventFx.classList.toggle('on', showVent);
+
+  // The red wash takes the helmet with it: for two seconds you are looking at
+  // the grate whether you wanted to or not. You can still walk.
+  if (showVent && !wasFaceOut) lockOnVent(nearest.index);
 
   // 80-50: the vents breathe on their own now and then, so a corridor is
   // never quiet — but nothing comes out of them.
@@ -3884,7 +3919,8 @@ function animate() {
     camera.position.set(Math.sin(time * 0.12) * 0.5, 1.66, 3.0 + Math.sin(time * 0.09) * 0.4);
     camera.rotation.set(0.015 * Math.sin(time * 0.2), Math.sin(time * 0.07) * 0.22, 0);
   } else {
-    updatePlayer(dt, time);
+    updateVentLock(dt);
+  updatePlayer(dt, time);
     updateShiftTimer(dt);
     updateEscape(dt);
     updateMonster(dt);

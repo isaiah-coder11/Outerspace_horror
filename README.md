@@ -142,7 +142,7 @@ how much of the ship you still hold:
 | Ship control | Vents |
 | --- | --- |
 | 100–80 | They watch — but not always and not everywhere. A grate is often just a grate: the pale eyes and teeth surface in its throat for a few seconds and sink back, each vent on its own clock, longer and more often as control falls. Now and then a face leans out of a grate at an angle, half behind the slats, stays for a breath or two, and is gone — then back at another grate, at no set rhythm. Meet its eyes and it leaves at once, and you hear it moving away inside the wall. |
-| 80–50 | The grate rattles as you pass, and when the eyes are actually out the visor fogs red with scanlines. No face in the grate, no red — walking past a vent is not a scare on its own. Tense, never a jumpscare. |
+| 80–50 | The grate rattles as you pass, and when the eyes are actually out the visor fogs red with scanlines — and the helmet turns to the grate and holds there for two seconds, so the red always comes with a face in it. No face in the grate, no red — walking past a vent is not a scare on its own. Tense, never a jumpscare. |
 | 50–20 | The jumpscare is real: lean in close and the thing lunges out of the wall. It hangs in the grate for a second or two now, close enough to read its face, before it drops back. It never costs ship control, so it cannot end the run. |
 | 20–0 | It comes all the way out of a vent, and then it hunts. |
 
