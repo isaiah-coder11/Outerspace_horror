@@ -206,6 +206,10 @@ makes the reserve the job burns (a reactor valve sends it to **HYDRO · BIO**).
 Press anything in that bay and it comes back to the work, so the marker walks
 you round the loop one stop at a time.
 
+Every shift opens with a mark already on it: the first job that still needs
+work is selected when you wake, so the first look down a corridor has a
+direction before you touch the panel.
+
 Pressing the same row again clears it, and with nothing selected the screen
 carries no pointers at all — no cracks, no pod, no other bays. The row itself
 lights up while it owns the mark.
@@ -215,6 +219,16 @@ Two things that are not jobs get their own buttons under the heading:
 cracks and dead when the hull is whole. They follow the same rule — one mark at
 a time, press again to clear — so the escape pod and the hull are one click
 away without ever being on screen unasked.
+
+## The ship
+
+Four twenty-metre corridors link the central hub to the bays. The hull is thin
+along each link: both side walls are cut by a window onto the star field, with a
+sill you could put a hand on and cold light spilling onto the floor, so the walk
+to a far bay is a walk past open space. Each corridor carries a cabinet, a
+junction box that blinks, a handrail and the debris nobody swept up. The hub has
+the berth's workbench, stacked crates, barrels against the wall and a status
+board that has not updated since the crew left.
 
 ## Today's jobs
 

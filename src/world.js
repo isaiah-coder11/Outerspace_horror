@@ -6,16 +6,42 @@ import * as THREE from 'three';
 // their rooms so the walkable union has no cracks at the seams.
 // ─────────────────────────────────────────────────────────────
 
+// The hub is the only compartment sized to the original drawing. Every bay
+// sits BAY_EXT metres further out, which turns each 12 m link into a 20 m
+// corridor — long enough that the far doorway is a shape, not a wall.
+export const BAY_EXT = 8;
+const HUB_HALF = 7;
+
+// Push a world coordinate out to wherever its compartment now sits. Anything
+// already beyond the hub moves; anything inside it stays put.
+export function outCoord(value) {
+  if (value > HUB_HALF) return value + BAY_EXT;
+  if (value < -HUB_HALF) return value - BAY_EXT;
+  return value;
+}
+
+// Same idea for a whole point: a prop belongs to one compartment, so only the
+// axis that compartment was pushed along moves. Shifting both would drag a
+// reactor valve sideways out through the wall.
+export function outPoint(x, z) {
+  const ax = Math.abs(x) > HUB_HALF ? Math.abs(x) - HUB_HALF : 0;
+  const az = Math.abs(z) > HUB_HALF ? Math.abs(z) - HUB_HALF : 0;
+
+  if (!ax && !az) return { x, z };
+  if (ax >= az) return { x: x + Math.sign(x) * BAY_EXT, z };
+  return { x, z: z + Math.sign(z) * BAY_EXT };
+}
+
 export const LAYOUT = {
   hub: { minX: -7, maxX: 7, minZ: -7, maxZ: 7, label: 'CENTRAL HUB', accent: 0x63d7ff },
-  corridorN: { minX: -2.5, maxX: 2.5, minZ: -19, maxZ: -7, label: 'CORRIDOR NORTH', accent: 0x3f8499 },
-  reactor: { minX: -10, maxX: 10, minZ: -33, maxZ: -19, label: 'REACTOR BAY', accent: 0xff6a32 },
-  corridorE: { minX: 7, maxX: 19, minZ: -2.5, maxZ: 2.5, label: 'CORRIDOR EAST', accent: 0x3f8499 },
-  med: { minX: 19, maxX: 33, minZ: -8, maxZ: 8, label: 'HYDRO BAY', accent: 0x59f0b0 },
-  corridorW: { minX: -19, maxX: -7, minZ: -2.5, maxZ: 2.5, label: 'CORRIDOR WEST', accent: 0x3f8499 },
-  nav: { minX: -33, maxX: -19, minZ: -8, maxZ: 8, label: 'NAV / COMMS', accent: 0x6f93ff },
-  corridorS: { minX: -2.5, maxX: 2.5, minZ: 7, maxZ: 19, label: 'CORRIDOR SOUTH', accent: 0x3f8499 },
-  escape: { minX: -9, maxX: 9, minZ: 19, maxZ: 33, label: 'ESCAPE BAY', accent: 0xa8e6ff },
+  corridorN: { minX: -2.5, maxX: 2.5, minZ: -27, maxZ: -7, label: 'CORRIDOR NORTH', accent: 0x3f8499 },
+  reactor: { minX: -10, maxX: 10, minZ: -41, maxZ: -27, label: 'REACTOR BAY', accent: 0xff6a32 },
+  corridorE: { minX: 7, maxX: 27, minZ: -2.5, maxZ: 2.5, label: 'CORRIDOR EAST', accent: 0x3f8499 },
+  med: { minX: 27, maxX: 41, minZ: -8, maxZ: 8, label: 'HYDRO BAY', accent: 0x59f0b0 },
+  corridorW: { minX: -27, maxX: -7, minZ: -2.5, maxZ: 2.5, label: 'CORRIDOR WEST', accent: 0x3f8499 },
+  nav: { minX: -41, maxX: -27, minZ: -8, maxZ: 8, label: 'NAV / COMMS', accent: 0x6f93ff },
+  corridorS: { minX: -2.5, maxX: 2.5, minZ: 7, maxZ: 27, label: 'CORRIDOR SOUTH', accent: 0x3f8499 },
+  escape: { minX: -9, maxX: 9, minZ: 27, maxZ: 41, label: 'ESCAPE BAY', accent: 0xa8e6ff },
 };
 
 // Collision uses the room boxes plus corridors pushed one metre into
@@ -728,14 +754,26 @@ export function createWorld(scene) {
 
   // ── geometry helpers ──────────────────────────────────────
 
+  // Structure is laid out at the final coordinates, so it must not be pushed
+  // out again by the bay shift that runs once the ship is built.
+  let structuralBuild = false;
+
   function addBox(w, h, d, x, y, z, material, parent = root) {
     const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), material);
     mesh.position.set(x, y, z);
+    mesh.userData.structural = structuralBuild;
     parent.add(mesh);
     return mesh;
   }
 
   function addWallZ(z, x1, x2, accent) {
+    const wasStructural = structuralBuild;
+    structuralBuild = true;
+    addWallZParts(z, x1, x2, accent);
+    structuralBuild = wasStructural;
+  }
+
+  function addWallZParts(z, x1, x2, accent) {
     const len = x2 - x1;
     const mat = new THREE.MeshStandardMaterial({
       color: 0x161c25,
@@ -753,6 +791,13 @@ export function createWorld(scene) {
   }
 
   function addWallX(x, z1, z2, accent) {
+    const wasStructural = structuralBuild;
+    structuralBuild = true;
+    addWallXParts(x, z1, z2, accent);
+    structuralBuild = wasStructural;
+  }
+
+  function addWallXParts(x, z1, z2, accent) {
     const len = z2 - z1;
     const mat = new THREE.MeshStandardMaterial({
       color: 0x161c25,
@@ -768,6 +813,7 @@ export function createWorld(scene) {
   }
 
   function addFloor(rect) {
+    structuralBuild = true;
     const w = rect.maxX - rect.minX;
     const d = rect.maxZ - rect.minZ;
     const tex = floorTex.clone();
@@ -780,9 +826,11 @@ export function createWorld(scene) {
     floor.rotation.x = -Math.PI / 2;
     floor.position.set((rect.minX + rect.maxX) / 2, 0, (rect.minZ + rect.maxZ) / 2);
     root.add(floor);
+    structuralBuild = false;
   }
 
   function addCeiling(rect) {
+    structuralBuild = true;
     const w = rect.maxX - rect.minX;
     const d = rect.maxZ - rect.minZ;
     const ceiling = new THREE.Mesh(
@@ -791,10 +839,12 @@ export function createWorld(scene) {
     );
     ceiling.rotation.x = Math.PI / 2;
     ceiling.position.set((rect.minX + rect.maxX) / 2, WALL_H - 0.02, (rect.minZ + rect.maxZ) / 2);
+    ceiling.userData.structural = true;
     root.add(ceiling);
+    structuralBuild = false;
   }
 
-  function addFixture(x, z, color, intensity, distance, longAxis = 'x', height = 3.24) {
+  function addFixture(x, z, color, intensity, distance, longAxis = 'x', height = 3.24, atFinal = false) {
     const fixtureMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(color).multiplyScalar(0.5), fog: true });
     const w = longAxis === 'x' ? 1.9 : 0.42;
     const d = longAxis === 'x' ? 0.42 : 1.9;
@@ -804,6 +854,10 @@ export function createWorld(scene) {
 
     const light = new THREE.PointLight(color, intensity, distance, 2);
     light.position.set(x, height - 0.32, z);
+    if (atFinal) {
+      fixture.userData.structural = true;
+      light.userData.structural = true;
+    }
     root.add(light);
 
     lightEntries.push({
@@ -863,47 +917,85 @@ export function createWorld(scene) {
   addWallX(7, -7, -2.5, 0x63d7ff);
   addWallX(7, 2.5, 7, 0x63d7ff);
 
+  // ── corridor walls ──────────────────────────────────────
+  // Each link is one long side wall either side of the walkway. Both are cut
+  // by a window at the midpoint, so a shift is twenty metres of hull with the
+  // dark on the other side of the glass.
+  const windowSpecs = [];
+
+  function corridorWallAtX(x, z1, z2, accent) {
+    const mid = (z1 + z2) / 2;
+    const a = mid - 1.7;
+    const b = mid + 1.7;
+    addWallX(x, z1, a, accent);
+    addWallX(x, b, z2, accent);
+
+    const wasStructural = structuralBuild;
+    structuralBuild = true;
+    addBox(WALL_T, 1.02, b - a, x, 0.51, mid, wallMat);
+    addBox(WALL_T, WALL_H - 2.42, b - a, x, (2.42 + WALL_H) / 2, mid, wallMat);
+    structuralBuild = wasStructural;
+
+    windowSpecs.push({ axis: 'x', x, z: mid, face: x > 0 ? -1 : 1, width: b - a });
+  }
+
+  function corridorWallAtZ(z, x1, x2, accent) {
+    const mid = (x1 + x2) / 2;
+    const a = mid - 1.7;
+    const b = mid + 1.7;
+    addWallZ(z, x1, a, accent);
+    addWallZ(z, b, x2, accent);
+
+    const wasStructural = structuralBuild;
+    structuralBuild = true;
+    addBox(b - a, 1.02, WALL_T, mid, 0.51, z, wallMat);
+    addBox(b - a, WALL_H - 2.42, WALL_T, mid, (2.42 + WALL_H) / 2, z, wallMat);
+    structuralBuild = wasStructural;
+
+    windowSpecs.push({ axis: 'z', z, x: mid, face: z > 0 ? -1 : 1, width: b - a });
+  }
+
   // north corridor
-  addWallX(-2.5, -19, -7, 0x3f8499);
-  addWallX(2.5, -19, -7, 0x3f8499);
+  corridorWallAtX(-2.5, -27, -7, 0x3f8499);
+  corridorWallAtX(2.5, -27, -7, 0x3f8499);
 
   // reactor
-  addWallX(-10, -33, -19, 0xff6a32);
-  addWallX(10, -33, -19, 0xff6a32);
-  addWallZ(-33, -10, 10, 0xff6a32);
-  addWallZ(-19, -10, -2.5, 0xff6a32);
-  addWallZ(-19, 2.5, 10, 0xff6a32);
+  addWallX(-10, -41, -27, 0xff6a32);
+  addWallX(10, -41, -27, 0xff6a32);
+  addWallZ(-41, -10, 10, 0xff6a32);
+  addWallZ(-27, -10, -2.5, 0xff6a32);
+  addWallZ(-27, 2.5, 10, 0xff6a32);
 
   // east corridor
-  addWallZ(-2.5, 7, 19, 0x3f8499);
-  addWallZ(2.5, 7, 19, 0x3f8499);
+  corridorWallAtZ(-2.5, 7, 27, 0x3f8499);
+  corridorWallAtZ(2.5, 7, 27, 0x3f8499);
 
   // cryo bay
-  addWallX(33, -8, 8, 0x59f0b0);
-  addWallZ(-8, 19, 33, 0x59f0b0);
-  addWallZ(8, 19, 33, 0x59f0b0);
-  addWallX(19, -8, -2.5, 0x59f0b0);
-  addWallX(19, 2.5, 8, 0x59f0b0);
+  addWallX(41, -8, 8, 0x59f0b0);
+  addWallZ(-8, 27, 41, 0x59f0b0);
+  addWallZ(8, 27, 41, 0x59f0b0);
+  addWallX(27, -8, -2.5, 0x59f0b0);
+  addWallX(27, 2.5, 8, 0x59f0b0);
 
   // west corridor
-  addWallZ(-2.5, -19, -7, 0x3f8499);
-  addWallZ(2.5, -19, -7, 0x3f8499);
+  corridorWallAtZ(-2.5, -27, -7, 0x3f8499);
+  corridorWallAtZ(2.5, -27, -7, 0x3f8499);
 
   // nav / comms
-  addWallX(-33, -8, 8, 0x6f93ff);
-  addWallZ(-8, -33, -19, 0x6f93ff);
-  addWallZ(8, -33, -19, 0x6f93ff);
-  addWallX(-19, -8, -2.5, 0x6f93ff);
-  addWallX(-19, 2.5, 8, 0x6f93ff);
+  addWallX(-41, -8, 8, 0x6f93ff);
+  addWallZ(-8, -41, -27, 0x6f93ff);
+  addWallZ(8, -41, -27, 0x6f93ff);
+  addWallX(-27, -8, -2.5, 0x6f93ff);
+  addWallX(-27, 2.5, 8, 0x6f93ff);
 
   // south corridor + escape bay
-  addWallX(-2.5, 7, 19, 0x3f8499);
-  addWallX(2.5, 7, 19, 0x3f8499);
-  addWallX(-9, 19, 33, 0xa8e6ff);
-  addWallX(9, 19, 33, 0xa8e6ff);
-  addWallZ(33, -9, 9, 0xa8e6ff);
-  addWallZ(19, -9, -2.5, 0xa8e6ff);
-  addWallZ(19, 2.5, 9, 0xa8e6ff);
+  corridorWallAtX(-2.5, 7, 27, 0x3f8499);
+  corridorWallAtX(2.5, 7, 27, 0x3f8499);
+  addWallX(-9, 27, 41, 0xa8e6ff);
+  addWallX(9, 27, 41, 0xa8e6ff);
+  addWallZ(41, -9, 9, 0xa8e6ff);
+  addWallZ(27, -9, -2.5, 0xa8e6ff);
+  addWallZ(27, 2.5, 9, 0xa8e6ff);
 
   // ── hazard thresholds ─────────────────────────────────────
   [
@@ -927,16 +1019,20 @@ export function createWorld(scene) {
 
   const DOORWAYS = [
     { x: 0, z: -7, axis: 'z' },
-    { x: 0, z: -19, axis: 'z' },
+    { x: 0, z: -27, axis: 'z' },
     { x: 0, z: 7, axis: 'z' },
-    { x: 0, z: 19, axis: 'z' },
+    { x: 0, z: 27, axis: 'z' },
     { x: 7, z: 0, axis: 'x' },
-    { x: 19, z: 0, axis: 'x' },
+    { x: 27, z: 0, axis: 'x' },
     { x: -7, z: 0, axis: 'x' },
-    { x: -19, z: 0, axis: 'x' },
+    { x: -27, z: 0, axis: 'x' },
   ];
 
-  DOORWAYS.forEach((door) => {
+  // The thresholds are drawn after the shift, so they sit at the new doors.
+  const doorSpecs = DOORWAYS.slice();
+
+  structuralBuild = true;
+  doorSpecs.forEach((door) => {
     const across = 2.5;
     const post = 0.22;
     const head = 2.58;
@@ -956,28 +1052,29 @@ export function createWorld(scene) {
   });
 
   // ── corridor pipes & wall conduits ────────────────────────
-  const northPipe = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 11.6, 8), pipeMat);
-  northPipe.rotation.x = Math.PI / 2;
-  northPipe.position.set(-2.05, 3.06, -13);
-  root.add(northPipe);
-  const northPipe2 = northPipe.clone();
-  northPipe2.position.x = 2.05;
-  root.add(northPipe2);
+  structuralBuild = true;
 
-  const eastPipe = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 11.4, 8), pipeMat);
-  eastPipe.rotation.z = Math.PI / 2;
-  eastPipe.position.set(13, 3.08, -2.05);
-  root.add(eastPipe);
-  const eastPipe2 = eastPipe.clone();
-  eastPipe2.position.z = 2.05;
-  root.add(eastPipe2);
+  const pipeRun = (axis, fixed, along) => {
+    const pipe = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 19.4, 8), pipeMat);
+    pipe.userData.structural = true;
+    if (axis === 'z') {
+      pipe.rotation.x = Math.PI / 2;
+      pipe.position.set(fixed, 3.06, along);
+    } else {
+      pipe.rotation.z = Math.PI / 2;
+      pipe.position.set(along, 3.08, fixed);
+    }
+    root.add(pipe);
+  };
 
-  const westPipe = eastPipe.clone();
-  westPipe.position.set(-13, 3.08, -2.05);
-  root.add(westPipe);
-  const westPipe2 = eastPipe.clone();
-  westPipe2.position.set(-13, 3.08, 2.05);
-  root.add(westPipe2);
+  pipeRun('z', -2.05, -17);
+  pipeRun('z', 2.05, -17);
+  pipeRun('x', -2.05, 17);
+  pipeRun('x', 2.05, 17);
+  pipeRun('x', -2.05, -17);
+  pipeRun('x', 2.05, -17);
+  pipeRun('z', -2.05, 17);
+  pipeRun('z', 2.05, 17);
 
   // ── corridor dread ────────────────────────────────────────
   // Each corridor gets emergency strips that stutter at floor and ceiling
@@ -987,10 +1084,10 @@ export function createWorld(scene) {
   const corridorCables = [];
 
   const CORRIDOR_RUNS = [
-    { x: 0, z: -13, axis: 'z', length: 11.4 },
-    { x: 13, z: 0, axis: 'x', length: 11.4 },
-    { x: -13, z: 0, axis: 'x', length: 11.4 },
-    { x: 0, z: 13, axis: 'z', length: 11.4 },
+    { x: 0, z: -17, axis: 'z', length: 19.4 },
+    { x: 17, z: 0, axis: 'x', length: 19.4 },
+    { x: -17, z: 0, axis: 'x', length: 19.4 },
+    { x: 0, z: 17, axis: 'z', length: 19.4 },
   ];
 
   CORRIDOR_RUNS.forEach((run) => {
@@ -1042,20 +1139,28 @@ export function createWorld(scene) {
         run.axis === 'z' ? run.z + offset : run.z + across,
       );
       cable.rotation.z = (Math.random() - 0.5) * 0.18;
+      cable.userData.structural = true;
       root.add(cable);
       corridorCables.push({ mesh: cable, phase: Math.random() * Math.PI * 2, base: cable.rotation.z });
     }
   });
 
+  structuralBuild = false;
+
   // ── lights ────────────────────────────────────────────────
   addFixture(0, -3.4, 0x9fd8ff, 30, 20, 'x');
-  addFixture(0, -13, 0x7dc6ee, 11, 11, 'x');
-  addFixture(13, 0, 0x7dc6ee, 11, 11, 'z');
-  addFixture(-13, 0, 0x7dc6ee, 11, 11, 'z');
+  // corridors are twice as long, so each one carries two lamps now
+  addFixture(0, -11, 0x7dc6ee, 11, 11, 'x', 3.24, true);
+  addFixture(0, -23, 0x6fb6dd, 10, 11, 'x', 3.24, true);
+  addFixture(11, 0, 0x7dc6ee, 11, 11, 'z', 3.24, true);
+  addFixture(23, 0, 0x6fb6dd, 10, 11, 'z', 3.24, true);
+  addFixture(-11, 0, 0x7dc6ee, 11, 11, 'z', 3.24, true);
+  addFixture(-23, 0, 0x6fb6dd, 10, 11, 'z', 3.24, true);
+  addFixture(0, 11, 0x7dc6ee, 10, 11, 'z', 3.24, true);
+  addFixture(0, 23, 0x6fb6dd, 9, 11, 'z', 3.24, true);
   addFixture(0, -26, 0xff6a32, 46, 24, 'z');
   addFixture(26, -1.4, 0x7dffc4, 30, 20, 'x');
   addFixture(-26, -0.6, 0x8fa9ff, 30, 20, 'x');
-  addFixture(0, 13, 0x7dc6ee, 10, 11, 'z');
   addFixture(0, 22.4, 0x9fe4ff, 30, 20, 'x');
   addFixture(0, 31.6, 0x9fe4ff, 26, 18, 'x');
 
@@ -1194,6 +1299,72 @@ export function createWorld(scene) {
   viewportGlow.rotation.y = Math.PI / 2;
   root.add(viewportGlow);
 
+  // ── corridor windows ──────────────────────────────────────
+  // The openings were left in the walls above. Each one gets a thick pane,
+  // a frame you could brace a hand on, and the star field the ship is
+  // drifting through — with a faint spill of cold light on the sill.
+  const windowFrameMat = new THREE.MeshStandardMaterial({ color: 0x1d2833, roughness: 0.55, metalness: 0.7 });
+  const windowRimMat = new THREE.MeshBasicMaterial({ color: 0x7fd0ff, transparent: true, opacity: 0.32, depthWrite: false, fog: true });
+
+  windowSpecs.forEach((spec, index) => {
+    const glassTex = starTex.clone();
+    glassTex.needsUpdate = true;
+    glassTex.wrapS = THREE.RepeatWrapping;
+    glassTex.wrapT = THREE.RepeatWrapping;
+    glassTex.offset.set((index * 0.29) % 1, (index * 0.47) % 1);
+
+    const pane = new THREE.Mesh(
+      new THREE.PlaneGeometry(spec.width, 1.36),
+      new THREE.MeshBasicMaterial({ map: glassTex, color: 0xbfe3ff, fog: true }),
+    );
+    pane.userData.structural = true;
+
+    const spread = new THREE.Mesh(
+      new THREE.PlaneGeometry(spec.width + 0.5, 1.8),
+      new THREE.MeshBasicMaterial({
+        map: glassTex,
+        color: 0x2f6d92,
+        transparent: true,
+        opacity: 0.22,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        fog: true,
+      }),
+    );
+    spread.userData.structural = true;
+
+    if (spec.axis === 'x') {
+      pane.rotation.y = spec.face > 0 ? Math.PI / 2 : -Math.PI / 2;
+      pane.position.set(spec.x + spec.face * 0.02, 1.72, spec.z);
+      spread.rotation.copy(pane.rotation);
+      spread.position.set(spec.x + spec.face * 0.06, 1.72, spec.z);
+    } else {
+      pane.rotation.y = spec.face > 0 ? 0 : Math.PI;
+      pane.position.set(spec.x, 1.72, spec.z + spec.face * 0.02);
+      spread.rotation.copy(pane.rotation);
+      spread.position.set(spec.x, 1.72, spec.z + spec.face * 0.06);
+    }
+
+    root.add(pane, spread);
+
+    // frame: sill, header and two jambs
+    if (spec.axis === 'x') {
+      addBox(0.42, 0.1, spec.width + 0.24, spec.x, 1.02, spec.z, windowFrameMat).userData.structural = true;
+      addBox(0.42, 0.1, spec.width + 0.24, spec.x, 2.42, spec.z, windowFrameMat).userData.structural = true;
+      [-1, 1].forEach((side) => {
+        addBox(0.42, 1.5, 0.12, spec.x, 1.72, spec.z + side * (spec.width / 2 + 0.06), windowFrameMat).userData.structural = true;
+      });
+      addBox(0.06, 0.05, spec.width + 0.5, spec.x + spec.face * 0.19, 1.4, spec.z, windowRimMat).userData.structural = true;
+    } else {
+      addBox(spec.width + 0.24, 0.1, 0.42, spec.x, 1.02, spec.z, windowFrameMat).userData.structural = true;
+      addBox(spec.width + 0.24, 0.1, 0.42, spec.x, 2.42, spec.z, windowFrameMat).userData.structural = true;
+      [-1, 1].forEach((side) => {
+        addBox(0.12, 1.5, 0.42, spec.x + side * (spec.width / 2 + 0.06), 1.72, spec.z, windowFrameMat).userData.structural = true;
+      });
+      addBox(spec.width + 0.5, 0.05, 0.06, spec.x, 1.4, spec.z + spec.face * 0.19, windowRimMat).userData.structural = true;
+    }
+  });
+
   // nav table
   const navTable = new THREE.Group();
   navTable.position.set(-26, 0, 0.2);
@@ -1261,6 +1432,136 @@ export function createWorld(scene) {
     cable.position.set(-6.2 + Math.random() * 1.2, 2.7, -4 + i * 1.7);
     root.add(cable);
   }
+
+  // ── hub furniture ────────────────────────────────────────
+  // The berth is where a shift starts and ends, so it is the one room with
+  // somewhere to put a tool down, something to trip over and a screen that
+  // still thinks it is 06:00.
+  const benchMat = new THREE.MeshStandardMaterial({ color: 0x232b33, roughness: 0.7, metalness: 0.45 });
+
+  addBox(2.4, 0.9, 0.72, 5.55, 0.45, -3.1, benchMat);
+  addBox(2.55, 0.09, 0.82, 5.55, 0.94, -3.1, trimBaseMat);
+  addBox(0.5, 0.26, 0.38, 4.95, 1.11, -3.15, crateMat);
+  addBox(0.4, 0.2, 0.3, 5.9, 1.08, -3.3, crateMat);
+  addBox(0.22, 0.16, 0.22, 6.1, 1.06, -2.8, pipeMat);
+
+  // stacked supply crates by the west wall
+  addBox(1.2, 0.9, 1.0, -5.95, 0.45, 2.6, crateMat);
+  addBox(1.0, 0.78, 0.9, -6.0, 1.29, 2.7, crateMat);
+  addBox(0.82, 0.6, 0.72, -5.9, 0.3, 4.2, crateMat);
+
+  // locker bank and a dead status board on the north wall
+  addBox(1.7, 1.95, 0.36, -4.4, 0.98, -6.7, benchMat);
+  addBox(0.06, 0.06, 0.04, -4.4, 1.35, -6.5, glowMat(0x63d7ff, 0.6));
+  const statusBoard = new THREE.Mesh(
+    new THREE.PlaneGeometry(2.2, 1.1),
+    new THREE.MeshBasicMaterial({ color: 0x0b1a22, transparent: true, opacity: 0.9, fog: true }),
+  );
+  statusBoard.position.set(3.4, 1.95, -6.82);
+  root.add(statusBoard);
+  const statusGlow = new THREE.Mesh(
+    new THREE.PlaneGeometry(2.06, 0.06),
+    new THREE.MeshBasicMaterial({ color: 0x63d7ff, transparent: true, opacity: 0.35, depthWrite: false, fog: true }),
+  );
+  statusGlow.position.set(3.4, 2.3, -6.8);
+  root.add(statusGlow);
+
+  // a grating torn up at the berth floor, and a cart someone left
+  const grateMat = new THREE.MeshStandardMaterial({ color: 0x141b23, roughness: 0.85, metalness: 0.6 });
+  addBox(1.9, 0.04, 1.5, 2.5, 0.022, -2.5, grateMat);
+  addBox(0.9, 0.7, 0.6, -2.4, 0.35, 4.9, benchMat);
+  addBox(1.02, 0.08, 0.72, -2.4, 0.74, 4.9, trimBaseMat);
+
+  // barrels against the east wall, one on its side
+  [4.4, 5.5].forEach((z) => {
+    const barrel = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.32, 0.32, 0.95, 12),
+      new THREE.MeshStandardMaterial({ color: 0x2a323b, roughness: 0.72, metalness: 0.5 }),
+    );
+    barrel.position.set(6.3, 0.48, z);
+    root.add(barrel);
+  });
+  const toppledBarrel = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.3, 0.3, 0.9, 12),
+    new THREE.MeshStandardMaterial({ color: 0x2a323b, roughness: 0.72, metalness: 0.5 }),
+  );
+  toppledBarrel.rotation.z = Math.PI / 2;
+  toppledBarrel.position.set(-1.6, 0.3, -5.4);
+  root.add(toppledBarrel);
+
+  // ceiling conduit that crosses the berth
+  const hubPipe = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 12.6, 8), pipeMat);
+  hubPipe.rotation.z = Math.PI / 2;
+  hubPipe.position.set(0, 3.12, -1.6);
+  root.add(hubPipe);
+  const hubPipe2 = hubPipe.clone();
+  hubPipe2.position.z = 1.6;
+  root.add(hubPipe2);
+
+  // ── corridor dressing ────────────────────────────────────
+  // Twenty metres of link needs more than strips: cabinets that still have
+  // somebody's name on them, junction boxes that blink, a handrail, and the
+  // debris that collects where nobody sweeps.
+  const cabinetMat = new THREE.MeshStandardMaterial({ color: 0x222c36, roughness: 0.62, metalness: 0.55 });
+  const ledMat = new THREE.MeshBasicMaterial({ color: 0xff4a2a, fog: true });
+
+  CORRIDOR_RUNS.forEach((run, runIndex) => {
+    const along = run.axis === 'z';
+    const half = run.length / 2;
+    const at = (dist, across) => (along
+      ? { x: run.x + across, z: run.z + dist }
+      : { x: run.x + dist, z: run.z + across });
+
+    // a cabinet against one wall near the hub end, on both sides alternately
+    const side = runIndex % 2 === 0 ? -2.06 : 2.06;
+    const cabinet = at(-half + 3.0, side);
+    const cabinetBox = addBox(
+      along ? 0.32 : 1.4,
+      1.55,
+      along ? 1.4 : 0.32,
+      cabinet.x,
+      0.78,
+      cabinet.z,
+      cabinetMat,
+    );
+    cabinetBox.userData.structural = true;
+    const handle = at(-half + 3.0, side > 0 ? side - 0.18 : side + 0.18);
+    addBox(0.05, 0.3, 0.05, handle.x, 1.05, handle.z, glowMat(0x9fd8ff, 0.5)).userData.structural = true;
+
+    // junction box on the ceiling with a light that is not quite dead
+    const junction = at(half - 4.4, along ? 1.5 : 1.5);
+    addBox(0.5, 0.36, 0.5, junction.x, 2.94, junction.z, cabinetMat).userData.structural = true;
+    const led = at(half - 4.4, along ? 1.5 : 1.5);
+    addBox(0.07, 0.07, 0.07, led.x, 2.72, led.z, ledMat).userData.structural = true;
+
+    // handrail down the far half of one wall
+    const rail = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, half - 1.2, 8), pipeMat);
+    rail.userData.structural = true;
+    if (along) {
+      rail.rotation.x = Math.PI / 2;
+      rail.position.set(run.x - 2.26, 1.06, run.z + half / 2);
+    } else {
+      rail.rotation.z = Math.PI / 2;
+      rail.position.set(run.x + half / 2, 1.06, run.z - 2.26);
+    }
+    root.add(rail);
+
+    // crates and a stain where the crew stopped carrying things
+    [-1.2, -0.2].forEach((step, index) => {
+      const crate = at(half - 2.2 - step, index === 0 ? 1.45 : 1.7);
+      addBox(0.48, 0.4, 0.42, crate.x, 0.21, crate.z, crateMat).userData.structural = true;
+    });
+
+    const stain = at(-half + 5.2, 0.5);
+    const stainMesh = new THREE.Mesh(
+      new THREE.CircleGeometry(0.95, 16),
+      new THREE.MeshBasicMaterial({ color: 0x05080a, transparent: true, opacity: 0.55, depthWrite: false, fog: true }),
+    );
+    stainMesh.rotation.x = -Math.PI / 2;
+    stainMesh.position.set(stain.x, 0.015, stain.z);
+    stainMesh.userData.structural = true;
+    root.add(stainMesh);
+  });
 
   // ── hull damage, vents and the thing in the dark ──────────
   const crackTex = makeCrackTexture();
@@ -1368,7 +1669,19 @@ export function createWorld(scene) {
     glow.visible = false;
     root.add(glow);
 
-    return { index, x: spec.x, y: spec.y, z: spec.z, ry: spec.ry, floor: !!spec.floor, mesh: crack, patch, glow };
+    const placed = outPoint(spec.x, spec.z);
+
+    return {
+      index,
+      x: placed.x,
+      y: spec.y,
+      z: placed.z,
+      ry: spec.ry,
+      floor: !!spec.floor,
+      mesh: crack,
+      patch,
+      glow,
+    };
   });
 
   const bloodTex = makeBloodTexture();
@@ -1686,16 +1999,16 @@ export function createWorld(scene) {
       { x: 0, z: 11 },
       { x: 11, z: 0 },
       { x: -11, z: 0 },
-      { x: 0, z: -17.4 },
-      { x: 17.4, z: 0 },
-      { x: -17.4, z: 0 },
-      { x: 0, z: 17.4 },
-      { x: 26, z: 0 },
-      { x: -26, z: 0 },
-      { x: 0, z: -26 },
-      { x: 0, z: 26 },
-      { x: 26, z: 7.2 },
-      { x: -26, z: -7.2 },
+      { x: 0, z: outCoord(-17.4) },
+      { x: outCoord(17.4), z: 0 },
+      { x: outCoord(-17.4), z: 0 },
+      { x: 0, z: outCoord(17.4) },
+      { x: outCoord(26), z: 0 },
+      { x: outCoord(-26), z: 0 },
+      { x: 0, z: outCoord(-26) },
+      { x: 0, z: outCoord(26) },
+      { x: outCoord(26), z: 7.2 },
+      { x: outCoord(-26), z: -7.2 },
     ];
     let best = null;
     let bestDist = Infinity;
@@ -2329,6 +2642,17 @@ export function createWorld(scene) {
     lurkMode = 'grab';
     lurkLife = 0;
   }
+
+  // ── bay shift ─────────────────────────────────────────────
+  // Everything loose was drawn at the old (shorter-corridor) coordinates.
+  // Structure is already at the new ones, so it is skipped; everything else
+  // moves out with its compartment, props and lights together.
+  root.children.forEach((child) => {
+    if (child.userData.structural) return;
+    const moved = outPoint(child.position.x, child.position.z);
+    child.position.x = moved.x;
+    child.position.z = moved.z;
+  });
 
   return {
     root,

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { AudioEngine } from './audio.js';
-import { createWorld, createSleepPod, createEscapePod, WALKABLE, LAYOUT, roomAt } from './world.js';
+import { createWorld, createSleepPod, createEscapePod, WALKABLE, LAYOUT, roomAt, outCoord } from './world.js';
 import {
   buildTask,
   TASK_POOL,
@@ -440,7 +440,7 @@ registerInteractable(sleepPod, {
 
 // the escape pod waits in the south bay; assembling it is the way out
 const escapePod = createEscapePod();
-escapePod.group.position.set(0, 0, 28);
+escapePod.group.position.set(0, 0, outCoord(28));
 const escapeHandle = registerInteractable(escapePod.group, {
   room: 'escape',
   label: `Build escape pod — ${ESCAPE_TOTAL} reserves`,
@@ -450,7 +450,7 @@ refreshPodHandle = refreshEscapePod;
 
 // one meal per day grows in the east bay
 const hydro = createHydroponics();
-hydro.position.set(31.3, 0, 0);
+hydro.position.set(outCoord(31.3), 0, 0);
 hydro.rotation.y = -Math.PI / 2;
 const hydroHandle = registerInteractable(hydro, {
   room: 'med',
@@ -466,9 +466,9 @@ const hydroHandle = registerInteractable(hydro, {
 // ─────────────────────────────────────────────────────────────
 
 const LOCKER_SPOTS = [
-  { room: 'reactor', x: 8.4, z: -32.4, ry: 0 },
-  { room: 'med', x: 32.4, z: 3.6, ry: -Math.PI / 2 },
-  { room: 'nav', x: -32.4, z: -4.0, ry: Math.PI / 2 },
+  { room: 'reactor', x: 8.4, z: outCoord(-32.4), ry: 0 },
+  { room: 'med', x: outCoord(32.4), z: 3.6, ry: -Math.PI / 2 },
+  { room: 'nav', x: outCoord(-32.4), z: -4.0, ry: Math.PI / 2 },
 ];
 
 const lockers = {};
@@ -1472,6 +1472,14 @@ function startDay(savedTasks = null, options = {}) {
     if (savedDef && saved) task.restore(saved);
   });
 
+  // A shift opens with one mark on it: the first job that still needs work,
+  // so the first look down a corridor already has somewhere to point.
+  const firstOpen = ['reactor', 'med', 'nav'].find(
+    (roomId) => state.tasks[roomId] && !state.tasks[roomId].complete,
+  );
+  state.focusTask = firstOpen || null;
+  state.markPhase = 'unit';
+
   // Restock once the day's tasks exist: the shelves have to cover the
   // presses they will actually be asked for.
   if (!keepTime) {
@@ -1510,6 +1518,9 @@ function startDay(savedTasks = null, options = {}) {
   applyMonsterPhase();
   setHovered(null);
   log(`DAY ${state.day} — three compartments need attention.`, 'warn');
+  if (firstOpen) {
+    log(`WAYPOINT SET — ${ROOM_META[firstOpen].name.toUpperCase()}.`, 'warn');
+  }
 
   if (state.day === 3) {
     log('HULL DECAY BEGINS — ship control will fall every night now.', 'bad');
@@ -2828,14 +2839,14 @@ function updateShiftTimer(dt) {
 
 const HUNT_WAYPOINTS = {
   hub: { x: 0, z: 0 },
-  n: { x: 0, z: -13 },
-  reactor: { x: 0, z: -26 },
-  e: { x: 13, z: 0 },
-  hydro: { x: 26, z: 0 },
-  w: { x: -13, z: 0 },
-  nav: { x: -26, z: 0 },
-  s: { x: 0, z: 13 },
-  escape: { x: 0, z: 26 },
+  n: { x: 0, z: outCoord(-13) },
+  reactor: { x: 0, z: outCoord(-26) },
+  e: { x: outCoord(13), z: 0 },
+  hydro: { x: outCoord(26), z: 0 },
+  w: { x: outCoord(-13), z: 0 },
+  nav: { x: outCoord(-26), z: 0 },
+  s: { x: 0, z: outCoord(13) },
+  escape: { x: 0, z: outCoord(26) },
 };
 
 const HUNT_EDGES = {
@@ -3470,9 +3481,9 @@ function updateMonster(dt) {
 // ─────────────────────────────────────────────────────────────
 
 const ROOM_POINTER_ANCHORS = {
-  reactor: { x: 0, y: 1.9, z: -22.8 },
-  med: { x: 26, y: 1.9, z: 0 },
-  nav: { x: -26, y: 1.9, z: 0 },
+  reactor: { x: 0, y: 1.9, z: outCoord(-22.8) },
+  med: { x: outCoord(26), y: 1.9, z: 0 },
+  nav: { x: outCoord(-26), y: 1.9, z: 0 },
 };
 
 const POD_POINTER = { x: 0, y: 1.85, z: 6.1 };
@@ -3649,7 +3660,7 @@ function updateWaypoints(dt) {
       entry.el.classList.add('next');
       drawWaypoint(
         entry,
-        { x: 0, y: 2.4, z: 26.4, label: state.podBuilt ? 'ESCAPE POD' : 'ESCAPE BAY' },
+        { x: 0, y: 2.4, z: outCoord(26.4), label: state.podBuilt ? 'ESCAPE POD' : 'ESCAPE BAY' },
         cameraPos,
         width,
         height,
