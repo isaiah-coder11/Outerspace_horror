@@ -143,7 +143,7 @@ how much of the ship you still hold:
 | --- | --- |
 | 100–80 | They watch — but not always and not everywhere. A grate is often just a grate: the pale eyes and teeth surface in its throat for a few seconds and sink back, each vent on its own clock, longer and more often as control falls. Now and then a face leans out of a grate at an angle, half behind the slats, stays for a breath or two, and is gone — then back at another grate, at no set rhythm. Meet its eyes and it leaves at once, and you hear it moving away inside the wall. |
 | 80–50 | The grate rattles as you pass, and when the eyes are actually out the visor fogs red with scanlines. No face in the grate, no red — walking past a vent is not a scare on its own. Tense, never a jumpscare. |
-| 50–20 | The jumpscare is real: lean in close and the thing lunges out of the wall. It never costs ship control, so it cannot end the run. |
+| 50–20 | The jumpscare is real: lean in close and the thing lunges out of the wall. It hangs in the grate for a second or two now, close enough to read its face, before it drops back. It never costs ship control, so it cannot end the run. |
 | 20–0 | It comes all the way out of a vent, and then it hunts. |
 
 Walk a corridor and a head and shoulder may be waiting just past the far door
@@ -229,6 +229,19 @@ to a far bay is a walk past open space. Each corridor carries a cabinet, a
 junction box that blinks, a handrail and the debris nobody swept up. The hub has
 the berth's workbench, stacked crates, barrels against the wall and a status
 board that has not updated since the crew left.
+
+## Crew cabins
+
+Two cabins open off the north corridor, 4 and 7, left the way the crew left them:
+bunks that were never stripped, a desk with the terminal still on, a porthole onto
+the drift. Each cabin keeps two notes — a log, a torn page, an unsent report, a
+note with no date. Press `E` on one to read it; the panel counts how many of the
+four you have found, and there is a line waiting when you have all of them.
+
+One cabin a run — picked at random, never both — has something waiting in its
+doorway. Step out of the room and it is standing a couple of metres inside,
+turned to face you, and it holds there longer than you want it to. It happens
+once: not in every cabin, not on every shift.
 
 ## Today's jobs
 

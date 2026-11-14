@@ -42,13 +42,17 @@ export const LAYOUT = {
   nav: { minX: -41, maxX: -27, minZ: -8, maxZ: 8, label: 'NAV / COMMS', accent: 0x6f93ff },
   corridorS: { minX: -2.5, maxX: 2.5, minZ: 7, maxZ: 27, label: 'CORRIDOR SOUTH', accent: 0x3f8499 },
   escape: { minX: -9, maxX: 9, minZ: 27, maxZ: 41, label: 'ESCAPE BAY', accent: 0xa8e6ff },
+  // Two crew cabins open off the north corridor. Nobody has slept in them
+  // since the crew left; the notes on their desks are all that is left.
+  cabinA: { minX: -9, maxX: -2.5, minZ: -12.6, maxZ: -8.4, label: 'CREW CABIN 4', accent: 0xc8a06a },
+  cabinB: { minX: -9, maxX: -2.5, minZ: -25.8, maxZ: -21.6, label: 'CREW CABIN 7', accent: 0xc8a06a },
 };
 
 // Collision uses the room boxes plus corridors pushed one metre into
 // each adjoining room, so the inset-by-player-radius test always has
 // an overlap at the seams and doorway thresholds stay passable.
 const COLLISION_OVERLAP = 1.0;
-export const WALKABLE = Object.entries(LAYOUT).map(([key, rect]) => {
+const ROOM_BOXES = Object.entries(LAYOUT).map(([key, rect]) => {
   if (key === 'corridorN' || key === 'corridorS') {
     return { ...rect, minZ: rect.minZ - COLLISION_OVERLAP, maxZ: rect.maxZ + COLLISION_OVERLAP };
   }
@@ -57,6 +61,15 @@ export const WALKABLE = Object.entries(LAYOUT).map(([key, rect]) => {
   }
   return rect;
 });
+
+// Cabin doorways need their own overlap: a strip narrow enough that only the
+// opening is passable, not the wall either side of it.
+const CABIN_DOORS = [
+  { minX: -3.0, maxX: -2.0, minZ: -11.45, maxZ: -9.55 },
+  { minX: -3.0, maxX: -2.0, minZ: -24.65, maxZ: -22.75 },
+];
+
+export const WALKABLE = [...ROOM_BOXES, ...CABIN_DOORS];
 
 const WALL_H = 3.4;
 const WALL_T = 0.3;
@@ -955,9 +968,26 @@ export function createWorld(scene) {
     windowSpecs.push({ axis: 'z', z, x: mid, face: z > 0 ? -1 : 1, width: b - a });
   }
 
-  // north corridor
-  corridorWallAtX(-2.5, -27, -7, 0x3f8499);
+  // north corridor. The west wall is broken by the window and by the two
+  // cabin doors, so it is built in segments instead of one run.
+  [
+    [-27, -24.65],
+    [-22.75, -18.7],
+    [-15.3, -11.45],
+    [-9.55, -7],
+  ].forEach(([a, b]) => addWallX(-2.5, a, b, 0x3f8499));
   corridorWallAtX(2.5, -27, -7, 0x3f8499);
+
+  {
+    const wasStructural = structuralBuild;
+    structuralBuild = true;
+    addBox(WALL_T, 1.02, 3.4, -2.5, 0.51, -17, wallMat);
+    addBox(WALL_T, WALL_H - 2.42, 3.4, -2.5, (2.42 + WALL_H) / 2, -17, wallMat);
+    addBox(WALL_T, WALL_H - 2.5, 1.9, -2.5, (2.5 + WALL_H) / 2, -10.5, wallMat);
+    addBox(WALL_T, WALL_H - 2.5, 1.9, -2.5, (2.5 + WALL_H) / 2, -23.7, wallMat);
+    structuralBuild = wasStructural;
+  }
+  windowSpecs.push({ axis: 'x', x: -2.5, z: -17, face: 1, width: 3.4 });
 
   // reactor
   addWallX(-10, -41, -27, 0xff6a32);
@@ -1364,6 +1394,138 @@ export function createWorld(scene) {
       addBox(spec.width + 0.5, 0.05, 0.06, spec.x, 1.4, spec.z + spec.face * 0.19, windowRimMat).userData.structural = true;
     }
   });
+
+  // ── crew cabins ──────────────────────────────────────────
+  // Two bunks that were never stripped, a desk with the last log still open,
+  // and a porthole someone taped a photograph beside. The notes are read from
+  // main.js, which owns the interact prompt.
+  const cabinFrameMat = new THREE.MeshStandardMaterial({ color: 0x2a2620, roughness: 0.7, metalness: 0.5 });
+  const mattressMat = new THREE.MeshStandardMaterial({ color: 0x1d2429, roughness: 0.95, metalness: 0.05 });
+  const noteMat = new THREE.MeshBasicMaterial({ color: 0xd8c9a6, transparent: true, opacity: 0.92, fog: true });
+  const notes = [];
+
+  const buildCabin = (roomId, z0, z1, noteSpecs) => {
+    const wasStructural = structuralBuild;
+    structuralBuild = true;
+
+    const mid = (z0 + z1) / 2;
+
+    addWallX(-9, z0, z1, 0xc8a06a);
+    addWallZ(z0, -9, -2.5, 0xc8a06a);
+    addWallZ(z1, -9, -2.5, 0xc8a06a);
+
+    // door frame
+    [-1, 1].forEach((side) => {
+      addBox(0.36, 2.5, 0.14, -2.5, 1.25, mid + side * (0.95 + 0.07), cabinFrameMat);
+    });
+    addBox(0.36, 0.18, 2.06, -2.5, 2.59, mid, cabinFrameMat);
+
+    // two bunks along the outer wall, one above the other
+    [0.62, 1.52].forEach((y) => {
+      addBox(1.9, 0.12, 0.92, -7.85, y, mid - 0.85, cabinFrameMat);
+      addBox(1.78, 0.08, 0.82, -7.85, y + 0.1, mid - 0.85, mattressMat);
+      addBox(0.34, 0.16, 0.5, -7.4, y + 0.16, mid - 1.05, mattressMat);
+    });
+    [-1.42, -0.28].forEach((dz) => {
+      addBox(0.08, 1.68, 0.08, -8.78, 0.84, mid + dz, cabinFrameMat);
+    });
+
+    // desk, chair and the terminal that still has the log open
+    addBox(1.5, 0.06, 0.8, -4.2, 0.76, mid + 1.05, cabinFrameMat);
+    addBox(0.09, 0.74, 0.09, -4.85, 0.37, mid + 0.72, cabinFrameMat);
+    addBox(0.09, 0.74, 0.09, -3.55, 0.37, mid + 0.72, cabinFrameMat);
+    addBox(0.09, 0.74, 0.09, -4.85, 0.37, mid + 1.38, cabinFrameMat);
+    addBox(0.09, 0.74, 0.09, -3.55, 0.37, mid + 1.38, cabinFrameMat);
+    addBox(0.46, 0.2, 0.34, -3.9, 0.9, mid + 1.1, cabinBoxMat);
+    addBox(0.42, 0.05, 0.34, -3.9, 1.05, mid + 1.28, cabinFrameMat);
+    addBox(0.5, 0.08, 0.5, -4.6, 0.44, mid + 1.9, mattressMat);
+    addBox(0.5, 0.62, 0.08, -4.6, 0.79, mid + 2.12, mattressMat);
+
+    // personal locker by the door
+    addBox(0.6, 1.75, 0.6, -3.3, 0.87, mid - 1.55, cabinBoxMat);
+
+    // porthole onto the same stars the corridors show
+    const portholeTex = starTex.clone();
+    portholeTex.needsUpdate = true;
+    const porthole = new THREE.Mesh(
+      new THREE.PlaneGeometry(0.95, 0.95),
+      new THREE.MeshBasicMaterial({ map: portholeTex, color: 0xbfe3ff, fog: true }),
+    );
+    porthole.rotation.y = Math.PI / 2;
+    porthole.position.set(-8.82, 1.95, mid);
+    porthole.userData.structural = true;
+    root.add(porthole);
+    const ring = new THREE.Mesh(
+      new THREE.TorusGeometry(0.52, 0.06, 8, 20),
+      cabinFrameMat,
+    );
+    ring.rotation.y = Math.PI / 2;
+    ring.position.set(-8.86, 1.95, mid);
+    ring.userData.structural = true;
+    root.add(ring);
+
+    noteSpecs.forEach((spec) => {
+      const paper = new THREE.Mesh(new THREE.PlaneGeometry(0.34, 0.44), noteMat);
+      paper.position.set(spec.x, spec.y, spec.z);
+      paper.rotation.y = spec.ry || 0;
+      if (spec.flat) paper.rotation.x = -Math.PI / 2;
+      paper.userData.structural = true;
+      root.add(paper);
+
+      notes.push({ ...spec, room: roomId });
+    });
+
+    structuralBuild = wasStructural;
+  };
+
+  const cabinBoxMat = new THREE.MeshStandardMaterial({ color: 0x252d33, roughness: 0.6, metalness: 0.6 });
+
+  buildCabin('cabinA', -12.6, -8.4, [
+    {
+      id: 'cabin4-a',
+      title: 'Log — cabin 4',
+      x: -4.2,
+      y: 0.83,
+      z: -9.4,
+      ry: 0.2,
+      flat: true,
+      text: 'Day 61. The manifest still lists nine of us. I counted six at mess, and Halden counted five.',
+    },
+    {
+      id: 'cabin4-b',
+      title: 'Torn page — cabin 4',
+      x: -8.7,
+      y: 1.62,
+      z: -11.4,
+      ry: Math.PI / 2,
+      text: 'It learns the ship by walking it. That is why the lights go out in the order they do: it is going room to room.',
+    },
+  ]);
+
+  buildCabin('cabinB', -25.8, -21.6, [
+    {
+      id: 'cabin7-a',
+      title: 'Unsent report — cabin 7',
+      x: -4.2,
+      y: 0.83,
+      z: -22.7,
+      ry: -0.15,
+      flat: true,
+      text: 'Command says the hull is sound. I have welded the same seam four times and it opens again every night.',
+    },
+    {
+      id: 'cabin7-b',
+      title: 'Note, no date — cabin 7',
+      x: -8.7,
+      y: 1.4,
+      z: -24.6,
+      ry: Math.PI / 2,
+      text: 'If you are reading this, you are the passenger. Do not answer it when it uses your name.',
+    },
+  ]);
+
+  addFixture(-6, -10.5, 0xffd6a4, 9, 8, 'x', 3.24, true);
+  addFixture(-6, -23.7, 0xffc9a0, 8, 8, 'x', 3.24, true);
 
   // nav table
   const navTable = new THREE.Group();
@@ -2196,7 +2358,7 @@ export function createWorld(scene) {
       if (finalLife <= 0) scareGroup.visible = false;
     } else if (scareLife > 0) {
       scareLife -= dt;
-      const intensity = Math.max(0, scareLife / 0.7);
+      const intensity = Math.min(1, Math.max(0, scareLife / 0.8));
       const jitter = intensity * 0.02;
       scareGroup.position.set(
         scareOrigin.x + Math.sin(elapsed * 63) * jitter,
@@ -2264,6 +2426,12 @@ export function createWorld(scene) {
         peeker.head.rotation.y = Math.sin(elapsed * 1.7) * 0.12;
         peeker.jaw.rotation.x = 0.06 + Math.sin(elapsed * 2.6) * 0.05;
         peeker.setEyeGlow(0.75 + Math.sin(elapsed * 7.7) * 0.2);
+      } else if (peekMode === 'door') {
+        // It turns its head to follow you out, and does not blink.
+        peeker.head.rotation.y = Math.sin(elapsed * 1.1) * 0.18;
+        peeker.head.rotation.z = 0.02 + Math.sin(elapsed * 0.7) * 0.02;
+        peeker.jaw.rotation.x = 0.14 + Math.sin(elapsed * 1.6) * 0.04;
+        peeker.setEyeGlow(0.9 + Math.sin(elapsed * 6.2) * 0.1);
       }
     }
 
@@ -2387,7 +2555,7 @@ export function createWorld(scene) {
     scareGroup.scale.setScalar(1.2);
     scareGroup.visible = true;
     scareCreature.head.rotation.set(-0.03, 0, 0.05);
-    scareLife = 0.7;
+    scareLife = 1.7;
   }
 
   // Push the nearest vent into a shudder. main.js calls this every frame
@@ -2416,7 +2584,8 @@ export function createWorld(scene) {
     scareGroup.visible = true;
     scareCreature.head.rotation.set(-0.03, 0, 0.05);
     scareCreature.jaw.rotation.x = 0.7;
-    scareLife = 0.85;
+    // Long enough to actually see the face in the grate, not a white frame.
+    scareLife = 2.1;
     vent.stir = 1;
   }
 
@@ -2654,10 +2823,33 @@ export function createWorld(scene) {
     child.position.z = moved.z;
   });
 
+  // The one-time cabin scare: it is standing in the doorway, turned to face
+  // the person stepping out of it. Not a lunge — it just watches you leave.
+  function doorPeek(x, z, playerPos) {
+    peeker.group.children.forEach((child) => {
+      child.visible = true;
+    });
+
+    peeker.group.position.set(x, 0, z);
+    peeker.group.scale.setScalar(1.04);
+    peeker.group.visible = true;
+    peeker.group.rotation.set(0, Math.atan2(playerPos.x - x, playerPos.z - z), 0);
+    peeker.head.rotation.set(0.03, 0, 0);
+    peeker.jaw.rotation.x = 0.14;
+    peeker.arms.forEach((arm) => arm.rotation.set(0, 0, 0));
+    peeker.setEyeGlow(1);
+
+    peekMode = 'door';
+    peekLife = 0;
+    return { x, z };
+  }
+
   return {
     root,
     update,
     flicker,
+    notes,
+    doorPeek,
     showGhost,
     showWatcher,
     hideGhost,

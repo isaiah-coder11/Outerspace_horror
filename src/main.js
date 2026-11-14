@@ -138,6 +138,15 @@ const WATCHER_LINES = [
 
 const CORRIDOR_ROOMS = ['corridorN', 'corridorE', 'corridorW', 'corridorS'];
 
+// Where each cabin's door meets the north corridor. The one-time scare puts
+// the thing in one of these, facing whoever walks out.
+const CABIN_DOORS = {
+  // It stands a couple of metres inside the cabin, so the door frame reads
+  // around it instead of its face filling the visor.
+  cabinA: { x: -4.4, z: -10.5 },
+  cabinB: { x: -4.4, z: -23.7 },
+};
+
 const CORRIDOR_LINES = [
   'The corridor is one shade dimmer than it was yesterday.',
   'Something keeps pace with you past the last fixture, then stops.',
@@ -333,6 +342,7 @@ const state = {
   standCooldown: 0,
   ventCooldown: 0,
   ventEvent: null,
+  doorScare: null,
   ventHuntPending: 0,
   ventAmbient: 18,
   corridorRoom: null,
@@ -486,6 +496,51 @@ LOCKER_SPOTS.forEach((spot) => {
   });
 
   lockers[spot.room] = { ...spot, built, handle, toolKey };
+});
+
+// ─────────────────────────────────────────────────────────────
+// crew notes
+//
+// The cabins off the north corridor still hold the crew's paper: one page on
+// each desk, one taped to a wall. Reading them is the only record of what the
+// last shift understood before it ended.
+// ─────────────────────────────────────────────────────────────
+
+const notesRead = new Set();
+
+function readCrewNote(note) {
+  if (state.phase !== 'day' || state.uiBlocking) return;
+
+  notesRead.add(note.id);
+  audio.beep(540, 0.09, 'sine', 0.04);
+  log(`${note.title.toUpperCase()} — ${note.text}`, 'ghostly');
+  world.flicker(1.5);
+  state.shake = Math.max(state.shake, 0.08);
+
+  window.setTimeout(() => {
+    if (notesRead.size >= world.notes.length) {
+      log('That is every note they left. Not one of them signed off.', 'warn');
+    } else {
+      log(`NOTES READ — ${notesRead.size}/${world.notes.length}.`, 'ghostly');
+    }
+  }, 800);
+}
+
+world.notes.forEach((note) => {
+  const group = new THREE.Group();
+  group.position.set(note.x, note.y, note.z);
+
+  const hit = new THREE.Mesh(
+    new THREE.BoxGeometry(0.46, 0.5, 0.24),
+    new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false }),
+  );
+  group.add(hit);
+
+  registerInteractable(group, {
+    room: note.room,
+    label: `Read ${note.title}`,
+    onInteract: () => readCrewNote(note),
+  });
 });
 
 function backpackTotal() {
@@ -1199,7 +1254,24 @@ function refreshTasks() {
 function updateRoom() {
   const roomId = roomAt(player.pos.x, player.pos.z);
   if (roomId === lastRoom) return;
+  const previous = lastRoom;
   lastRoom = roomId;
+
+  // Leaving the cabin that was picked for the scare: it is in the doorway
+  // behind you, turned to watch you go.
+  const scare = state.doorScare;
+  if (scare && !scare.done && previous === scare.room && roomId === 'corridorN') {
+    const door = CABIN_DOORS[scare.room];
+    if (door) {
+      scare.done = true;
+      world.doorPeek(door.x, door.z, player.pos);
+      world.flicker(2.6);
+      audio.whisper();
+      state.shake = Math.max(state.shake, 0.45);
+      log('SOMETHING IS STANDING IN THE DOORWAY. IT IS LOOKING AT YOU.', 'bad');
+      window.setTimeout(() => world.hidePeek(), 4600);
+    }
+  }
 
   roomBannerText.textContent = LAYOUT[roomId].label;
   roomBanner.classList.remove('hidden');
@@ -1999,6 +2071,10 @@ function startGame() {
   state.lastPicks = {};
   state.tasks = {};
   state.completedCount = 0;
+  // One cabin a run gets the doorway. It is not every room, and it happens
+  // once, on the way out.
+  state.doorScare = { room: Math.random() < 0.5 ? 'cabinA' : 'cabinB', done: false };
+  notesRead.clear();
   setLife(100);
   respawnPlayer();
   startDay();
