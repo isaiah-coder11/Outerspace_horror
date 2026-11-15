@@ -223,10 +223,18 @@ away without ever being on screen unasked.
 ## The ship
 
 Four twenty-metre corridors link the central hub to the bays, and no two bays sit
-in the same place: the reactor is five metres east of the end of its corridor,
-hydro four metres north of its own, nav three metres south, and the escape bay
-five metres east again. You come out of a corridor into the side of a room, not
-into its centre.
+in the same place — each one is offset on both axes, by a different amount:
+
+| Bay | Along its corridor | Across it |
+| --- | --- | --- |
+| Reactor | flush | 6 m east |
+| Hydro | 3 m further out | 4 m north |
+| Nav / comms | 4 m further out | 3 m south |
+| Escape | 3 m further out | 3 m west |
+
+The three bays that sit further out reach their corridor through a short duct cut
+on the same mouth, so a doorway is always straight on from the link. You come out
+of a corridor into the side of a room, not into its centre.
 
 The hull is thin along each link: both side walls are cut by a window onto the
 star field, with a sill you could put a hand on and cold light spilling onto the

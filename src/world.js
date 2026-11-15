@@ -55,10 +55,10 @@ const BASE_LAYOUT = {
 // amount and in a different direction, so no two compartments sit in the same
 // place relative to the hub and the ship does not read as a mirror.
 export const BAY_OFFSETS = {
-  reactor: { dx: 5, dz: 0 },
-  med: { dx: 0, dz: 4 },
-  nav: { dx: 0, dz: -3 },
-  escape: { dx: 5, dz: 0 },
+  reactor: { dx: 6, dz: 0 },
+  med: { dx: 3, dz: 4 },
+  nav: { dx: -4, dz: -3 },
+  escape: { dx: -3, dz: 3 },
 };
 
 export function bayOffset(room) {
@@ -75,12 +75,28 @@ function shiftRect(rect, offset) {
   };
 }
 
-export const LAYOUT = Object.fromEntries(
-  Object.entries(BASE_LAYOUT).map(([key, rect]) => [
-    key,
-    shiftRect(rect, bayOffset(key)),
-  ]),
-);
+// Bays that were pushed further down their own corridor need a short duct to
+// reach the corridor mouth. Each one overlaps both ends by a metre, because the
+// walk test insets every box by the player's radius.
+const BAY_LINKS = {
+  medLink: { minX: 27, maxX: 31, minZ: -2.5, maxZ: 2.5, label: 'HYDRO LINK', accent: 0x59f0b0 },
+  navLink: { minX: -32, maxX: -27, minZ: -2.5, maxZ: 2.5, label: 'NAV LINK', accent: 0x6f93ff },
+  escapeLink: { minX: -2.5, maxX: 2.5, minZ: 27, maxZ: 31, label: 'ESCAPE LINK', accent: 0xa8e6ff },
+};
+
+// A duct belongs to the bay it serves, so the banner and the monster treat the
+// threshold as part of the room.
+const LINK_ROOMS = { medLink: 'med', navLink: 'nav', escapeLink: 'escape' };
+
+export const LAYOUT = {
+  ...Object.fromEntries(
+    Object.entries(BASE_LAYOUT).map(([key, rect]) => [
+      key,
+      shiftRect(rect, bayOffset(key)),
+    ]),
+  ),
+  ...BAY_LINKS,
+};
 
 function baseRoomAt(x, z) {
   for (const [key, r] of Object.entries(BASE_LAYOUT)) {
@@ -89,10 +105,29 @@ function baseRoomAt(x, z) {
   return 'hub';
 }
 
+const DUCT_ROOMS = {
+  medLink: 'med',
+  navLink: 'nav',
+  escapeLink: 'escape',
+};
+
+function baseDuctAt(x, z) {
+  for (const [key, r] of Object.entries({
+    medLink: { minX: 27, maxX: 31, minZ: -2.5, maxZ: 2.5 },
+    navLink: { minX: -32, maxX: -27, minZ: -2.5, maxZ: 2.5 },
+    escapeLink: { minX: -2.5, maxX: 2.5, minZ: 27, maxZ: 31 },
+  })) {
+    if (x > r.minX && x < r.maxX && z > r.minZ && z < r.maxZ) return DUCT_ROOMS[key];
+  }
+  return null;
+}
+
 // Where a point authored in the old drawing ends up on the ship as built.
 export function shipPoint(x, z) {
   const stretched = outPoint(x, z);
-  const offset = bayOffset(baseRoomAt(stretched.x, stretched.z));
+  const duct = baseDuctAt(stretched.x, stretched.z);
+  const room = duct || baseRoomAt(stretched.x, stretched.z);
+  const offset = bayOffset(room);
   return { x: stretched.x + offset.dx, z: stretched.z + offset.dz };
 }
 
@@ -132,7 +167,9 @@ const WALL_T = 0.3;
 
 export function roomAt(x, z) {
   for (const [key, r] of Object.entries(LAYOUT)) {
-    if (x > r.minX && x < r.maxX && z > r.minZ && z < r.maxZ) return key;
+    if (x > r.minX && x < r.maxX && z > r.minZ && z < r.maxZ) {
+      return LINK_ROOMS[key] || key;
+    }
   }
   return 'hub';
 }
@@ -1045,44 +1082,56 @@ export function createWorld(scene) {
   }
   windowSpecs.push({ axis: 'x', x: -2.5, z: -17, face: 1, width: 3.4 });
 
-  // reactor — slid five metres east of its corridor
-  addWallX(-5, -41, -27, 0xff6a32);
-  addWallX(15, -41, -27, 0xff6a32);
-  addWallZ(-41, -5, 15, 0xff6a32);
-  addWallZ(-27, -5, -2.5, 0xff6a32);
-  addWallZ(-27, 2.5, 15, 0xff6a32);
+  // reactor — six metres east of its corridor
+  addWallX(-4, -41, -27, 0xff6a32);
+  addWallX(16, -41, -27, 0xff6a32);
+  addWallZ(-41, -4, 16, 0xff6a32);
+  addWallZ(-27, -4, -2.5, 0xff6a32);
+  addWallZ(-27, 2.5, 16, 0xff6a32);
 
   // east corridor
   corridorWallAtZ(-2.5, 7, 27, 0x3f8499);
   corridorWallAtZ(2.5, 7, 27, 0x3f8499);
 
-  // hydro bay — slid four metres north of its corridor
-  addWallX(41, -4, 12, 0x59f0b0);
-  addWallZ(-4, 27, 41, 0x59f0b0);
-  addWallZ(12, 27, 41, 0x59f0b0);
-  addWallX(27, -4, -2.5, 0x59f0b0);
-  addWallX(27, 2.5, 12, 0x59f0b0);
+  // hydro bay — three metres past its corridor and four metres north of it
+  addWallX(44, -4, 12, 0x59f0b0);
+  addWallZ(-4, 30, 44, 0x59f0b0);
+  addWallZ(12, 30, 44, 0x59f0b0);
+  addWallX(30, -4, -2.5, 0x59f0b0);
+  addWallX(30, 2.5, 12, 0x59f0b0);
+
+  // the duct from the east corridor to the hydro door
+  addWallZ(-2.5, 27, 30, 0x59f0b0);
+  addWallZ(2.5, 27, 30, 0x59f0b0);
 
   // west corridor
   corridorWallAtZ(-2.5, -27, -7, 0x3f8499);
   corridorWallAtZ(2.5, -27, -7, 0x3f8499);
 
-  // nav / comms — slid three metres south of its corridor
-  addWallX(-41, -11, 5, 0x6f93ff);
-  addWallZ(-11, -41, -27, 0x6f93ff);
-  addWallZ(5, -41, -27, 0x6f93ff);
-  addWallX(-27, -11, -2.5, 0x6f93ff);
-  addWallX(-27, 2.5, 5, 0x6f93ff);
+  // nav / comms — four metres past its corridor and three metres south of it
+  addWallX(-45, -11, 5, 0x6f93ff);
+  addWallZ(-11, -45, -31, 0x6f93ff);
+  addWallZ(5, -45, -31, 0x6f93ff);
+  addWallX(-31, -11, -2.5, 0x6f93ff);
+  addWallX(-31, 2.5, 5, 0x6f93ff);
+
+  // the duct from the west corridor to the nav door
+  addWallZ(-2.5, -31, -27, 0x6f93ff);
+  addWallZ(2.5, -31, -27, 0x6f93ff);
 
   // south corridor + escape bay
   corridorWallAtX(-2.5, 7, 27, 0x3f8499);
   corridorWallAtX(2.5, 7, 27, 0x3f8499);
-  // escape bay — slid five metres east of its corridor
-  addWallX(-4, 27, 41, 0xa8e6ff);
-  addWallX(14, 27, 41, 0xa8e6ff);
-  addWallZ(41, -4, 14, 0xa8e6ff);
-  addWallZ(27, -4, -2.5, 0xa8e6ff);
-  addWallZ(27, 2.5, 14, 0xa8e6ff);
+  // escape bay — three metres past its corridor and three metres west of it
+  addWallX(-12, 30, 44, 0xa8e6ff);
+  addWallX(6, 30, 44, 0xa8e6ff);
+  addWallZ(44, -12, 6, 0xa8e6ff);
+  addWallZ(30, -12, -2.5, 0xa8e6ff);
+  addWallZ(30, 2.5, 6, 0xa8e6ff);
+
+  // the duct from the south corridor to the escape bay door
+  addWallX(-2.5, 27, 30, 0xa8e6ff);
+  addWallX(2.5, 27, 30, 0xa8e6ff);
 
   // ── hazard thresholds ─────────────────────────────────────
   [
