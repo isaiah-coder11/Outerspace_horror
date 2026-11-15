@@ -222,13 +222,25 @@ away without ever being on screen unasked.
 
 ## The ship
 
-Four twenty-metre corridors link the central hub to the bays. The hull is thin
-along each link: both side walls are cut by a window onto the star field, with a
-sill you could put a hand on and cold light spilling onto the floor, so the walk
-to a far bay is a walk past open space. Each corridor carries a cabinet, a
+Four twenty-metre corridors link the central hub to the bays, and no two bays sit
+in the same place: the reactor is five metres east of the end of its corridor,
+hydro four metres north of its own, nav three metres south, and the escape bay
+five metres east again. You come out of a corridor into the side of a room, not
+into its centre.
+
+The hull is thin along each link: both side walls are cut by a window onto the
+star field, with a sill you could put a hand on and cold light spilling onto the
+floor, so the walk to a far bay is a walk past open space. Each corridor carries a cabinet, a
 junction box that blinks, a handrail and the debris nobody swept up. The hub has
 the berth's workbench, stacked crates, barrels against the wall and a status
 board that has not updated since the crew left.
+
+## Supply cabinets
+
+Two cabinets are stocked at the start of every shift. The one in the berth holds
+6 POWER and 6 BIOMASS; the one in the north corridor, past the cabins, holds 6
+DATA and 4 POWER. Press `E` to empty one into the reserves — it takes everything
+still inside and reads empty until the next shift refills it.
 
 ## Crew cabins
 

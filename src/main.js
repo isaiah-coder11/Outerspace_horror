@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { AudioEngine } from './audio.js';
-import { createWorld, createSleepPod, createEscapePod, WALKABLE, LAYOUT, roomAt, outCoord } from './world.js';
+import { createWorld, createSleepPod, createEscapePod, WALKABLE, LAYOUT, roomAt, outCoord, shipPoint, roomShiftPoint } from './world.js';
 import {
   buildTask,
   TASK_POOL,
@@ -456,7 +456,8 @@ registerInteractable(sleepPod, {
 
 // the escape pod waits in the south bay; assembling it is the way out
 const escapePod = createEscapePod();
-escapePod.group.position.set(0, 0, outCoord(28));
+const podSpot = shipPoint(0, 28);
+escapePod.group.position.set(podSpot.x, 0, podSpot.z);
 const escapeHandle = registerInteractable(escapePod.group, {
   room: 'escape',
   label: `Build escape pod — ${ESCAPE_TOTAL} reserves`,
@@ -466,7 +467,8 @@ refreshPodHandle = refreshEscapePod;
 
 // one meal per day grows in the east bay
 const hydro = createHydroponics();
-hydro.position.set(outCoord(31.3), 0, 0);
+const hydroSpot = shipPoint(31.3, 0);
+hydro.position.set(hydroSpot.x, 0, hydroSpot.z);
 hydro.rotation.y = -Math.PI / 2;
 const hydroHandle = registerInteractable(hydro, {
   room: 'med',
@@ -481,13 +483,14 @@ const hydroHandle = registerInteractable(hydro, {
 // tool is kept in a different bay's locker.
 // ─────────────────────────────────────────────────────────────
 
-const LOCKER_SPOTS = [
-  { room: 'reactor', x: 8.4, z: outCoord(-32.4), ry: 0 },
-  { room: 'med', x: outCoord(32.4), z: 3.6, ry: -Math.PI / 2 },
-  { room: 'nav', x: outCoord(-32.4), z: -4.0, ry: Math.PI / 2 },
-];
-
 const lockers = {};
+const lockerSpot = (room, x, z, ry) => ({ room, ...shipPoint(x, z), ry });
+
+const LOCKER_SPOTS = [
+  lockerSpot('reactor', 8.4, -32.4, 0),
+  lockerSpot('med', 32.4, 3.6, -Math.PI / 2),
+  lockerSpot('nav', -32.4, -4.0, Math.PI / 2),
+];
 
 LOCKER_SPOTS.forEach((spot) => {
   const toolKey = LOCKER_TOOL[spot.room];
@@ -582,6 +585,81 @@ world.notes.forEach((note) => {
     onInteract: () => readCrewNote(note),
   });
 });
+// ─────────────────────────────────────────────────────────────
+// supply cabinets
+//
+// Two lockers the crew stocked before they stopped coming to work. A press
+// takes whatever is still inside, and they are refilled at the start of every
+// shift, so a player who runs a bay dry has somewhere to go that is not the
+// pod.
+// ─────────────────────────────────────────────────────────────
+
+const cabinetStock = {};
+const cabinetHandles = {};
+
+function cabinetLabel(cab) {
+  const stock = cabinetStock[cab.id] || {};
+  const parts = Object.entries(stock)
+    .filter(([, amount]) => amount > 0)
+    .map(([key, amount]) => `${amount} ${RESOURCE_META[key].short}`);
+  return parts.length ? `Search cabinet — ${parts.join(' · ')}` : 'Cabinet — empty';
+}
+
+function refreshCabinets() {
+  world.cabinets.forEach((cab) => {
+    cabinetStock[cab.id] = { ...cab.stock };
+    const handle = cabinetHandles[cab.id];
+    if (handle) handle.label = cabinetLabel(cab);
+  });
+}
+
+function raidCabinet(cab, handle) {
+  const stock = cabinetStock[cab.id];
+  if (!stock) return;
+
+  const taken = [];
+  Object.keys(stock).forEach((key) => {
+    const amount = stock[key];
+    if (amount > 0) {
+      state.resources[key] += amount;
+      taken.push(`+${amount} ${RESOURCE_META[key].short}`);
+      stock[key] = 0;
+    }
+  });
+
+  if (!taken.length) {
+    log('THE CABINET IS EMPTY. SOMEONE GOT HERE FIRST.', 'warn');
+    return;
+  }
+
+  handle.label = cabinetLabel(cab);
+  if (hovered === handle) interactText.textContent = handle.label;
+  setResourcesUI();
+  audio.success();
+  log(`CABINET — ${taken.join(' · ')} TO THE RESERVES.`, 'warn');
+}
+
+world.cabinets.forEach((cab) => {
+  cabinetStock[cab.id] = { ...cab.stock };
+
+  const group = new THREE.Group();
+  group.position.set(cab.x, 0, cab.z);
+  group.rotation.y = cab.ry;
+
+  const hit = new THREE.Mesh(
+    new THREE.BoxGeometry(1.2, 1.95, 0.95),
+    new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false }),
+  );
+  hit.position.y = 0.98;
+  group.add(hit);
+
+  cabinetHandles[cab.id] = registerInteractable(group, {
+    room: cab.room,
+    label: cabinetLabel(cab),
+    onInteract: () => raidCabinet(cab, cabinetHandles[cab.id]),
+  });
+});
+
 
 function backpackTotal() {
   return Object.keys(TOOL_META).reduce((total, key) => total + (state.backpack[key] || 0), 0);
@@ -1301,7 +1379,8 @@ function updateRoom() {
   // behind you, turned to watch you go.
   const scare = state.doorScare;
   if (scare && !scare.done && previous === scare.room && roomId === 'corridorN') {
-    const door = CABIN_DOORS[scare.room];
+    const base = CABIN_DOORS[scare.room];
+    const door = base ? roomShiftPoint(scare.room, base.x, base.z) : null;
     if (door) {
       scare.done = true;
       world.doorPeek(door.x, door.z, player.pos);
@@ -1594,6 +1673,8 @@ function startDay(savedTasks = null, options = {}) {
 
   // Restock once the day's tasks exist: the shelves have to cover the
   // presses they will actually be asked for.
+  refreshCabinets();
+
   if (!keepTime) {
     const stock = restockLockers();
     if (stock.min < TOOL_RESTOCK_BASE) {
@@ -2998,14 +3079,14 @@ function updateShiftTimer(dt) {
 
 const HUNT_WAYPOINTS = {
   hub: { x: 0, z: 0 },
-  n: { x: 0, z: outCoord(-13) },
-  reactor: { x: 0, z: outCoord(-26) },
-  e: { x: outCoord(13), z: 0 },
-  hydro: { x: outCoord(26), z: 0 },
-  w: { x: outCoord(-13), z: 0 },
-  nav: { x: outCoord(-26), z: 0 },
-  s: { x: 0, z: outCoord(13) },
-  escape: { x: 0, z: outCoord(26) },
+  n: shipPoint(0, -13),
+  reactor: shipPoint(0, -26),
+  e: shipPoint(13, 0),
+  hydro: shipPoint(26, 0),
+  w: shipPoint(-13, 0),
+  nav: shipPoint(-26, 0),
+  s: shipPoint(0, 13),
+  escape: shipPoint(0, 26),
 };
 
 const HUNT_EDGES = {
@@ -3639,10 +3720,12 @@ function updateMonster(dt) {
 // suit task pointers
 // ─────────────────────────────────────────────────────────────
 
+const anchorAt = (x, z) => ({ ...shipPoint(x, z), y: 1.9 });
+
 const ROOM_POINTER_ANCHORS = {
-  reactor: { x: 0, y: 1.9, z: outCoord(-22.8) },
-  med: { x: outCoord(26), y: 1.9, z: 0 },
-  nav: { x: outCoord(-26), y: 1.9, z: 0 },
+  reactor: anchorAt(0, -22.8),
+  med: anchorAt(26, 0),
+  nav: anchorAt(-26, 0),
 };
 
 const POD_POINTER = { x: 0, y: 1.85, z: 6.1 };
@@ -3819,7 +3902,7 @@ function updateWaypoints(dt) {
       entry.el.classList.add('next');
       drawWaypoint(
         entry,
-        { x: 0, y: 2.4, z: outCoord(26.4), label: state.podBuilt ? 'ESCAPE POD' : 'ESCAPE BAY' },
+        { x: podSpot.x, y: 2.4, z: podSpot.z, label: state.podBuilt ? 'ESCAPE POD' : 'ESCAPE BAY' },
         cameraPos,
         width,
         height,

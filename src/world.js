@@ -32,7 +32,10 @@ export function outPoint(x, z) {
   return { x, z: z + Math.sign(z) * BAY_EXT };
 }
 
-export const LAYOUT = {
+// The hull as it was drawn: four links leaving the hub at right angles, each
+// ending in a bay. The bays themselves sit off-axis now (see BAY_OFFSETS), so
+// this is only the reference frame the furniture was laid out in.
+const BASE_LAYOUT = {
   hub: { minX: -7, maxX: 7, minZ: -7, maxZ: 7, label: 'CENTRAL HUB', accent: 0x63d7ff },
   corridorN: { minX: -2.5, maxX: 2.5, minZ: -27, maxZ: -7, label: 'CORRIDOR NORTH', accent: 0x3f8499 },
   reactor: { minX: -10, maxX: 10, minZ: -41, maxZ: -27, label: 'REACTOR BAY', accent: 0xff6a32 },
@@ -47,6 +50,56 @@ export const LAYOUT = {
   cabinA: { minX: -9, maxX: -2.5, minZ: -12.6, maxZ: -8.4, label: 'CREW CABIN 4', accent: 0xc8a06a },
   cabinB: { minX: -9, maxX: -2.5, minZ: -25.8, maxZ: -21.6, label: 'CREW CABIN 7', accent: 0xc8a06a },
 };
+
+// Every bay is slid sideways off the end of its own corridor, by a different
+// amount and in a different direction, so no two compartments sit in the same
+// place relative to the hub and the ship does not read as a mirror.
+export const BAY_OFFSETS = {
+  reactor: { dx: 5, dz: 0 },
+  med: { dx: 0, dz: 4 },
+  nav: { dx: 0, dz: -3 },
+  escape: { dx: 5, dz: 0 },
+};
+
+export function bayOffset(room) {
+  return BAY_OFFSETS[room] || { dx: 0, dz: 0 };
+}
+
+function shiftRect(rect, offset) {
+  return {
+    ...rect,
+    minX: rect.minX + offset.dx,
+    maxX: rect.maxX + offset.dx,
+    minZ: rect.minZ + offset.dz,
+    maxZ: rect.maxZ + offset.dz,
+  };
+}
+
+export const LAYOUT = Object.fromEntries(
+  Object.entries(BASE_LAYOUT).map(([key, rect]) => [
+    key,
+    shiftRect(rect, bayOffset(key)),
+  ]),
+);
+
+function baseRoomAt(x, z) {
+  for (const [key, r] of Object.entries(BASE_LAYOUT)) {
+    if (x > r.minX && x < r.maxX && z > r.minZ && z < r.maxZ) return key;
+  }
+  return 'hub';
+}
+
+// Where a point authored in the old drawing ends up on the ship as built.
+export function shipPoint(x, z) {
+  const stretched = outPoint(x, z);
+  const offset = bayOffset(baseRoomAt(stretched.x, stretched.z));
+  return { x: stretched.x + offset.dx, z: stretched.z + offset.dz };
+}
+
+export function roomShiftPoint(room, x, z) {
+  const offset = bayOffset(room);
+  return { x: x + offset.dx, z: z + offset.dz };
+}
 
 // Collision uses the room boxes plus corridors pushed one metre into
 // each adjoining room, so the inset-by-player-radius test always has
@@ -992,43 +1045,44 @@ export function createWorld(scene) {
   }
   windowSpecs.push({ axis: 'x', x: -2.5, z: -17, face: 1, width: 3.4 });
 
-  // reactor
-  addWallX(-10, -41, -27, 0xff6a32);
-  addWallX(10, -41, -27, 0xff6a32);
-  addWallZ(-41, -10, 10, 0xff6a32);
-  addWallZ(-27, -10, -2.5, 0xff6a32);
-  addWallZ(-27, 2.5, 10, 0xff6a32);
+  // reactor — slid five metres east of its corridor
+  addWallX(-5, -41, -27, 0xff6a32);
+  addWallX(15, -41, -27, 0xff6a32);
+  addWallZ(-41, -5, 15, 0xff6a32);
+  addWallZ(-27, -5, -2.5, 0xff6a32);
+  addWallZ(-27, 2.5, 15, 0xff6a32);
 
   // east corridor
   corridorWallAtZ(-2.5, 7, 27, 0x3f8499);
   corridorWallAtZ(2.5, 7, 27, 0x3f8499);
 
-  // cryo bay
-  addWallX(41, -8, 8, 0x59f0b0);
-  addWallZ(-8, 27, 41, 0x59f0b0);
-  addWallZ(8, 27, 41, 0x59f0b0);
-  addWallX(27, -8, -2.5, 0x59f0b0);
-  addWallX(27, 2.5, 8, 0x59f0b0);
+  // hydro bay — slid four metres north of its corridor
+  addWallX(41, -4, 12, 0x59f0b0);
+  addWallZ(-4, 27, 41, 0x59f0b0);
+  addWallZ(12, 27, 41, 0x59f0b0);
+  addWallX(27, -4, -2.5, 0x59f0b0);
+  addWallX(27, 2.5, 12, 0x59f0b0);
 
   // west corridor
   corridorWallAtZ(-2.5, -27, -7, 0x3f8499);
   corridorWallAtZ(2.5, -27, -7, 0x3f8499);
 
-  // nav / comms
-  addWallX(-41, -8, 8, 0x6f93ff);
-  addWallZ(-8, -41, -27, 0x6f93ff);
-  addWallZ(8, -41, -27, 0x6f93ff);
-  addWallX(-27, -8, -2.5, 0x6f93ff);
-  addWallX(-27, 2.5, 8, 0x6f93ff);
+  // nav / comms — slid three metres south of its corridor
+  addWallX(-41, -11, 5, 0x6f93ff);
+  addWallZ(-11, -41, -27, 0x6f93ff);
+  addWallZ(5, -41, -27, 0x6f93ff);
+  addWallX(-27, -11, -2.5, 0x6f93ff);
+  addWallX(-27, 2.5, 5, 0x6f93ff);
 
   // south corridor + escape bay
   corridorWallAtX(-2.5, 7, 27, 0x3f8499);
   corridorWallAtX(2.5, 7, 27, 0x3f8499);
-  addWallX(-9, 27, 41, 0xa8e6ff);
-  addWallX(9, 27, 41, 0xa8e6ff);
-  addWallZ(41, -9, 9, 0xa8e6ff);
-  addWallZ(27, -9, -2.5, 0xa8e6ff);
-  addWallZ(27, 2.5, 9, 0xa8e6ff);
+  // escape bay — slid five metres east of its corridor
+  addWallX(-4, 27, 41, 0xa8e6ff);
+  addWallX(14, 27, 41, 0xa8e6ff);
+  addWallZ(41, -4, 14, 0xa8e6ff);
+  addWallZ(27, -4, -2.5, 0xa8e6ff);
+  addWallZ(27, 2.5, 14, 0xa8e6ff);
 
   // ── hazard thresholds ─────────────────────────────────────
   [
@@ -1546,6 +1600,46 @@ export function createWorld(scene) {
     },
   ]);
 
+  // ── supply cabinets ─────────────────────────────────────
+  // Two lockers the crew stocked and never emptied. They are stocked again at
+  // the start of every shift, because the bays keep making more.
+  const cabinetShellMat = new THREE.MeshStandardMaterial({ color: 0x2b333c, roughness: 0.62, metalness: 0.62 });
+  const cabinetDoorMat = new THREE.MeshStandardMaterial({ color: 0x333d47, roughness: 0.5, metalness: 0.7 });
+  const cabinets = [];
+  const CABINET_SPECS = [
+    { id: 'cabinet-hub', room: 'hub', x: -6.62, z: 0.8, ry: Math.PI / 2, stock: { power: 6, biomass: 6 } },
+    { id: 'cabinet-corridor', room: 'corridorN', x: 2.06, z: -13.2, ry: -Math.PI / 2, stock: { data: 6, power: 4 } },
+  ];
+
+  CABINET_SPECS.forEach((spec) => {
+    const wasStructural = structuralBuild;
+    structuralBuild = true;
+
+    const placed = shipPoint(spec.x, spec.z);
+    const group = new THREE.Group();
+    group.position.set(placed.x, 0, placed.z);
+    group.rotation.y = spec.ry;
+
+    addBox(0.94, 1.72, 0.44, 0, 0.86, 0, cabinetShellMat, group);
+    addBox(0.42, 1.6, 0.06, -0.23, 0.86, 0.24, cabinetDoorMat, group);
+    addBox(0.42, 1.6, 0.06, 0.23, 0.86, 0.24, cabinetDoorMat, group);
+    addBox(0.06, 0.26, 0.06, -0.06, 0.9, 0.29, trimBaseMat, group);
+    addBox(0.06, 0.26, 0.06, 0.06, 0.9, 0.29, trimBaseMat, group);
+    addBox(0.9, 0.04, 0.42, 0, 1.74, 0, trimBaseMat, group);
+
+    const lamp = new THREE.Mesh(
+      new THREE.BoxGeometry(0.5, 0.03, 0.02),
+      new THREE.MeshBasicMaterial({ color: 0x8fe3ff, transparent: true, opacity: 0.5, depthWrite: false, fog: true }),
+    );
+    lamp.position.set(0, 1.52, 0.26);
+    group.add(lamp);
+
+    root.add(group);
+    structuralBuild = wasStructural;
+
+    cabinets.push({ ...spec, x: placed.x, z: placed.z });
+  });
+
   addFixture(-6, -10.5, 0xffd6a4, 9, 8, 'x', 3.24, true);
   addFixture(-6, -23.7, 0xffc9a0, 8, 8, 'x', 3.24, true);
 
@@ -1853,7 +1947,7 @@ export function createWorld(scene) {
     glow.visible = false;
     root.add(glow);
 
-    const placed = outPoint(spec.x, spec.z);
+    const placed = shipPoint(spec.x, spec.z);
 
     return {
       index,
@@ -2179,20 +2273,20 @@ export function createWorld(scene) {
   // Close enough that it takes a second to understand what you are seeing.
   function pickGhostSpot(playerPos, minDist = 6) {
     const spots = [
-      { x: 0, z: -11 },
-      { x: 0, z: 11 },
-      { x: 11, z: 0 },
-      { x: -11, z: 0 },
-      { x: 0, z: outCoord(-17.4) },
-      { x: outCoord(17.4), z: 0 },
-      { x: outCoord(-17.4), z: 0 },
-      { x: 0, z: outCoord(17.4) },
-      { x: outCoord(26), z: 0 },
-      { x: outCoord(-26), z: 0 },
-      { x: 0, z: outCoord(-26) },
-      { x: 0, z: outCoord(26) },
-      { x: outCoord(26), z: 7.2 },
-      { x: outCoord(-26), z: -7.2 },
+      shipPoint(0, -11),
+      shipPoint(0, 11),
+      shipPoint(11, 0),
+      shipPoint(-11, 0),
+      shipPoint(0, -17.4),
+      shipPoint(17.4, 0),
+      shipPoint(-17.4, 0),
+      shipPoint(0, 17.4),
+      shipPoint(26, 0),
+      shipPoint(-26, 0),
+      shipPoint(0, -26),
+      shipPoint(0, 26),
+      shipPoint(26, 7.2),
+      shipPoint(-26, -7.2),
     ];
     let best = null;
     let bestDist = Infinity;
@@ -2840,9 +2934,9 @@ export function createWorld(scene) {
   // moves out with its compartment, props and lights together.
   root.children.forEach((child) => {
     if (child.userData.structural) return;
-    const moved = outPoint(child.position.x, child.position.z);
-    child.position.x = moved.x;
-    child.position.z = moved.z;
+    const placed = shipPoint(child.position.x, child.position.z);
+    child.position.x = placed.x;
+    child.position.z = placed.z;
   });
 
   // The one-time cabin scare: it is standing in the doorway, turned to face
@@ -2871,6 +2965,7 @@ export function createWorld(scene) {
     update,
     flicker,
     notes,
+    cabinets,
     doorPeek,
     showGhost,
     showWatcher,

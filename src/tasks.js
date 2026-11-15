@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { makeLabelSprite, outPoint } from './world.js';
+import { makeLabelSprite, shipPoint } from './world.js';
 
 // ─────────────────────────────────────────────────────────────
 // Daily maintenance tasks.
@@ -683,7 +683,7 @@ export function buildTask(def, roomId, api) {
   def.spots.forEach((spot, index) => {
     const built = def.make(index);
     const holder = new THREE.Group();
-    const placed = outPoint(spot.x, spot.z);
+    const placed = shipPoint(spot.x, spot.z);
     holder.position.set(placed.x, 0, placed.z);
     holder.rotation.y = spot.ry || 0;
     holder.add(built.group);
