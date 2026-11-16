@@ -75,28 +75,100 @@ function shiftRect(rect, offset) {
   };
 }
 
-// Bays that were pushed further down their own corridor need a short duct to
-// reach the corridor mouth. Each one overlaps both ends by a metre, because the
-// walk test insets every box by the player's radius.
-const BAY_LINKS = {
-  medLink: { minX: 27, maxX: 31, minZ: -2.5, maxZ: 2.5, label: 'HYDRO LINK', accent: 0x59f0b0 },
-  navLink: { minX: -32, maxX: -27, minZ: -2.5, maxZ: 2.5, label: 'NAV LINK', accent: 0x6f93ff },
-  escapeLink: { minX: -2.5, maxX: 2.5, minZ: 27, maxZ: 31, label: 'ESCAPE LINK', accent: 0xa8e6ff },
+// Which corridor each bay opens off. That is the only thing a bay is told by
+// hand: where its walls, its doorway and its duct go is worked out from the two
+// rectangles, so sliding a bay in BAY_OFFSETS cannot leave a wall behind.
+const BAY_CORRIDORS = {
+  reactor: 'corridorN',
+  med: 'corridorE',
+  nav: 'corridorW',
+  escape: 'corridorS',
 };
+
+// A duct reaches a metre past the doorway of the bay it serves, because the
+// walk test insets every box by the player's radius: two boxes that only touch
+// leave a gap twice that wide, and the doorway becomes a wall.
+const LINK_OVERLAP = 1;
+
+// Where a bay meets its corridor, read off the two rectangles instead of typed
+// in: which axis the door is on, which way the corridor lies, how far the bay
+// sits back from the end of it, and how much of the bay wall is missing for the
+// mouth.
+function doorBetween(bayRect, corridorRect) {
+  const apart = (aMin, aMax, bMin, bMax) => {
+    if (aMax <= bMin) return { gap: bMin - aMax, dir: 1 }; // corridor past the far edge
+    if (bMax <= aMin) return { gap: aMin - bMax, dir: -1 }; // corridor before the near edge
+    return { gap: 0, dir: 0 }; // they overlap here, so this is not the door axis
+  };
+  const sx = apart(bayRect.minX, bayRect.maxX, corridorRect.minX, corridorRect.maxX);
+  const sz = apart(bayRect.minZ, bayRect.maxZ, corridorRect.minZ, corridorRect.maxZ);
+
+  // The door sits on the axis the corridor lies along. A bay that is flush only
+  // touches its corridor, and the touching edge is the door.
+  const useX = sx.dir !== 0 && (sz.dir === 0 || sx.gap >= sz.gap);
+  const { gap, dir } = useX ? sx : sz;
+
+  const towards = (rect) => (useX ? (dir > 0 ? rect.maxX : rect.minX) : (dir > 0 ? rect.maxZ : rect.minZ));
+  const away = (rect) => (useX ? (dir > 0 ? rect.minX : rect.maxX) : (dir > 0 ? rect.minZ : rect.maxZ));
+
+  return {
+    axis: useX ? 'x' : 'z',
+    dir,
+    gap,
+    doorEdge: towards(bayRect), // the bay wall the door is cut through
+    farEdge: away(bayRect), // the bay wall opposite it
+    corridorEdge: away(corridorRect), // where the corridor stops, facing the bay
+    mouth: useX
+      ? { min: corridorRect.minZ, max: corridorRect.maxZ }
+      : { min: corridorRect.minX, max: corridorRect.maxX },
+  };
+}
+
+function doorsFor(rects) {
+  return Object.fromEntries(
+    Object.entries(BAY_CORRIDORS).map(([bay, corridor]) => [bay, doorBetween(rects[bay], rects[corridor])]),
+  );
+}
+
+// A bay that sits back from the end of its corridor needs a duct to reach it.
+// One that is only offset sideways stands flush and gets none.
+function ductsFor(rects, doors) {
+  const ducts = {};
+  for (const [bay, door] of Object.entries(doors)) {
+    if (door.gap <= 0) continue;
+    const a = door.doorEdge - door.dir * LINK_OVERLAP;
+    const lo = Math.min(a, door.corridorEdge);
+    const hi = Math.max(a, door.corridorEdge);
+    ducts[bay] = door.axis === 'x'
+      ? { minX: lo, maxX: hi, minZ: door.mouth.min, maxZ: door.mouth.max }
+      : { minZ: lo, maxZ: hi, minX: door.mouth.min, maxX: door.mouth.max };
+  }
+  return ducts;
+}
+
+const BAY_RECTS = Object.fromEntries(
+  Object.entries(BASE_LAYOUT).map(([key, rect]) => [key, shiftRect(rect, bayOffset(key))]),
+);
+
+const BAY_DOORS = doorsFor(BAY_RECTS);
+const BAY_DUCTS = ductsFor(BAY_RECTS, BAY_DOORS);
 
 // A duct belongs to the bay it serves, so the banner and the monster treat the
 // threshold as part of the room.
-const LINK_ROOMS = { medLink: 'med', navLink: 'nav', escapeLink: 'escape' };
+const LINK_ROOMS = Object.fromEntries(Object.keys(BAY_DUCTS).map((bay) => [`${bay}Link`, bay]));
 
-export const LAYOUT = {
-  ...Object.fromEntries(
-    Object.entries(BASE_LAYOUT).map(([key, rect]) => [
-      key,
-      shiftRect(rect, bayOffset(key)),
-    ]),
-  ),
-  ...BAY_LINKS,
-};
+const BAY_LINKS = Object.fromEntries(
+  Object.entries(BAY_DUCTS).map(([bay, rect]) => [
+    `${bay}Link`,
+    {
+      ...rect,
+      label: `${BASE_LAYOUT[bay].label.split(' ')[0]} LINK`,
+      accent: BASE_LAYOUT[bay].accent,
+    },
+  ]),
+);
+
+export const LAYOUT = { ...BAY_RECTS, ...BAY_LINKS };
 
 function baseRoomAt(x, z) {
   for (const [key, r] of Object.entries(BASE_LAYOUT)) {
@@ -105,21 +177,52 @@ function baseRoomAt(x, z) {
   return 'hub';
 }
 
-const DUCT_ROOMS = {
-  medLink: 'med',
-  navLink: 'nav',
-  escapeLink: 'escape',
-};
+// The same rule on the reference drawing, so an authored coordinate that falls
+// in a duct is mapped with the bay it belongs to rather than its corridor.
+const BASE_DUCTS = ductsFor(BASE_LAYOUT, doorsFor(BASE_LAYOUT));
 
 function baseDuctAt(x, z) {
-  for (const [key, r] of Object.entries({
-    medLink: { minX: 27, maxX: 31, minZ: -2.5, maxZ: 2.5 },
-    navLink: { minX: -32, maxX: -27, minZ: -2.5, maxZ: 2.5 },
-    escapeLink: { minX: -2.5, maxX: 2.5, minZ: 27, maxZ: 31 },
-  })) {
-    if (x > r.minX && x < r.maxX && z > r.minZ && z < r.maxZ) return DUCT_ROOMS[key];
+  for (const [bay, r] of Object.entries(BASE_DUCTS)) {
+    if (x > r.minX && x < r.maxX && z > r.minZ && z < r.maxZ) return bay;
   }
   return null;
+}
+
+// The shell of every bay, worked out from its rectangle and the corridor it
+// opens off: the far end, the near side cut either side of the mouth, the two
+// long sides and — for a bay that sits back — the pair of walls either side of
+// its duct. Returned as data so the geometry can be checked without a scene.
+export function bayWallSpecs(rects = LAYOUT, doors = BAY_DOORS, ducts = BAY_DUCTS) {
+  const specs = [];
+  for (const [bay, door] of Object.entries(doors)) {
+    const rect = rects[bay];
+    const { accent } = rect;
+    const { axis, mouth } = door;
+    const sides = axis === 'x'
+      ? { min: rect.minZ, max: rect.maxZ }
+      : { min: rect.minX, max: rect.maxX };
+
+    specs.push({ axis, at: door.farEdge, from: sides.min, to: sides.max, accent });
+    specs.push({ axis, at: door.doorEdge, from: sides.min, to: mouth.min, accent });
+    specs.push({ axis, at: door.doorEdge, from: mouth.max, to: sides.max, accent });
+    if (axis === 'x') {
+      specs.push({ axis: 'z', at: sides.min, from: rect.minX, to: rect.maxX, accent });
+      specs.push({ axis: 'z', at: sides.max, from: rect.minX, to: rect.maxX, accent });
+    } else {
+      specs.push({ axis: 'x', at: sides.min, from: rect.minZ, to: rect.maxZ, accent });
+      specs.push({ axis: 'x', at: sides.max, from: rect.minZ, to: rect.maxZ, accent });
+    }
+
+    // The duct's two long sides run from the end of the corridor to the bay
+    // wall and no further, or they would stand inside the room.
+    if (!ducts[bay]) continue;
+    const lo = Math.min(door.corridorEdge, door.doorEdge);
+    const hi = Math.max(door.corridorEdge, door.doorEdge);
+    const cross = axis === 'x' ? 'z' : 'x';
+    specs.push({ axis: cross, at: mouth.min, from: lo, to: hi, accent });
+    specs.push({ axis: cross, at: mouth.max, from: lo, to: hi, accent });
+  }
+  return specs;
 }
 
 // Where a point authored in the old drawing ends up on the ship as built.
@@ -1082,56 +1185,24 @@ export function createWorld(scene) {
   }
   windowSpecs.push({ axis: 'x', x: -2.5, z: -17, face: 1, width: 3.4 });
 
-  // reactor — six metres east of its corridor
-  addWallX(-4, -41, -27, 0xff6a32);
-  addWallX(16, -41, -27, 0xff6a32);
-  addWallZ(-41, -4, 16, 0xff6a32);
-  addWallZ(-27, -4, -2.5, 0xff6a32);
-  addWallZ(-27, 2.5, 16, 0xff6a32);
-
   // east corridor
   corridorWallAtZ(-2.5, 7, 27, 0x3f8499);
   corridorWallAtZ(2.5, 7, 27, 0x3f8499);
-
-  // hydro bay — three metres past its corridor and four metres north of it
-  addWallX(44, -4, 12, 0x59f0b0);
-  addWallZ(-4, 30, 44, 0x59f0b0);
-  addWallZ(12, 30, 44, 0x59f0b0);
-  addWallX(30, -4, -2.5, 0x59f0b0);
-  addWallX(30, 2.5, 12, 0x59f0b0);
-
-  // the duct from the east corridor to the hydro door
-  addWallZ(-2.5, 27, 30, 0x59f0b0);
-  addWallZ(2.5, 27, 30, 0x59f0b0);
 
   // west corridor
   corridorWallAtZ(-2.5, -27, -7, 0x3f8499);
   corridorWallAtZ(2.5, -27, -7, 0x3f8499);
 
-  // nav / comms — four metres past its corridor and three metres south of it
-  addWallX(-45, -11, 5, 0x6f93ff);
-  addWallZ(-11, -45, -31, 0x6f93ff);
-  addWallZ(5, -45, -31, 0x6f93ff);
-  addWallX(-31, -11, -2.5, 0x6f93ff);
-  addWallX(-31, 2.5, 5, 0x6f93ff);
-
-  // the duct from the west corridor to the nav door
-  addWallZ(-2.5, -31, -27, 0x6f93ff);
-  addWallZ(2.5, -31, -27, 0x6f93ff);
-
   // south corridor + escape bay
   corridorWallAtX(-2.5, 7, 27, 0x3f8499);
   corridorWallAtX(2.5, 7, 27, 0x3f8499);
-  // escape bay — three metres past its corridor and three metres west of it
-  addWallX(-12, 30, 44, 0xa8e6ff);
-  addWallX(6, 30, 44, 0xa8e6ff);
-  addWallZ(44, -12, 6, 0xa8e6ff);
-  addWallZ(30, -12, -2.5, 0xa8e6ff);
-  addWallZ(30, 2.5, 6, 0xa8e6ff);
-
-  // the duct from the south corridor to the escape bay door
-  addWallX(-2.5, 27, 30, 0xa8e6ff);
-  addWallX(2.5, 27, 30, 0xa8e6ff);
+  // ── bay walls ─────────────────────────────────────────────
+  // Read out of the bay rectangles, so a bay that moves takes its shell and its
+  // duct with it.
+  bayWallSpecs().forEach((spec) => {
+    if (spec.axis === 'x') addWallX(spec.at, spec.from, spec.to, spec.accent);
+    else addWallZ(spec.at, spec.from, spec.to, spec.accent);
+  });
 
   // ── hazard thresholds ─────────────────────────────────────
   [
