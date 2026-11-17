@@ -188,6 +188,87 @@ function baseDuctAt(x, z) {
   return null;
 }
 
+// ── bay and doorway furniture, read off the layout ─────────
+// Lamps, bulkhead frames and hazard stripes are placed relative to the room or
+// corridor they belong to, so moving a bay takes its light and its doorway
+// furniture with it instead of leaving them behind in the corridor.
+
+// A bay is lit from its own middle: dx/dz are metres off the centre of the bay.
+// Colour, brightness and the way the fixture lies are light design, not layout.
+const BAY_LAMPS = {
+  reactor: [{ dx: 0, dz: 0, axis: 'z', color: 0xff6a32, intensity: 46, distance: 24 }],
+  med: [{ dx: 0, dz: -1.4, axis: 'x', color: 0x7dffc4, intensity: 30, distance: 20 }],
+  nav: [{ dx: 0, dz: -0.6, axis: 'x', color: 0x8fa9ff, intensity: 30, distance: 20 }],
+  escape: [
+    { dx: 0, dz: -3.6, axis: 'x', color: 0x9fe4ff, intensity: 30, distance: 20 },
+    { dx: 0, dz: 5.6, axis: 'x', color: 0x9fe4ff, intensity: 26, distance: 18 },
+  ],
+};
+
+export function bayLampSpecs(rects = LAYOUT) {
+  const lamps = [];
+  for (const [bay, list] of Object.entries(BAY_LAMPS)) {
+    const rect = rects[bay];
+    const cx = (rect.minX + rect.maxX) / 2;
+    const cz = (rect.minZ + rect.maxZ) / 2;
+    for (const lamp of list) {
+      lamps.push({
+        x: cx + lamp.dx,
+        z: cz + lamp.dz,
+        axis: lamp.axis,
+        color: lamp.color,
+        intensity: lamp.intensity,
+        distance: lamp.distance,
+      });
+    }
+  }
+  return lamps;
+}
+
+// Which way a corridor runs, taken from the rectangle: it is the long side.
+function corridorAxis(rect) {
+  return rect.maxX - rect.minX > rect.maxZ - rect.minZ ? 'x' : 'z';
+}
+
+// A frame where a corridor leaves the hub and another where it reaches its bay,
+// both read off the corridor rectangle, so a longer or wider corridor keeps its
+// frames at the doors.
+export function doorwaySpecs(rects = LAYOUT) {
+  const doors = [];
+  for (const key of ['corridorN', 'corridorS', 'corridorE', 'corridorW']) {
+    const rect = rects[key];
+    if (corridorAxis(rect) === 'x') {
+      const z = (rect.minZ + rect.maxZ) / 2;
+      const half = (rect.maxZ - rect.minZ) / 2;
+      doors.push({ x: rect.minX, z, axis: 'x', half });
+      doors.push({ x: rect.maxX, z, axis: 'x', half });
+    } else {
+      const x = (rect.minX + rect.maxX) / 2;
+      const half = (rect.maxX - rect.minX) / 2;
+      doors.push({ x, z: rect.minZ, axis: 'z', half });
+      doors.push({ x, z: rect.maxZ, axis: 'z', half });
+    }
+  }
+  return doors;
+}
+
+// Hazard stripes lie across the mouths of the three working systems; the escape
+// run has never been marked.
+const HAZARD_CORRIDORS = ['corridorN', 'corridorE', 'corridorW'];
+
+export function hazardSpecs(rects = LAYOUT) {
+  const hub = rects.hub;
+  return HAZARD_CORRIDORS.map((key) => {
+    const rect = rects[key];
+    if (corridorAxis(rect) === 'x') {
+      const x = rect.minX >= hub.maxX ? hub.maxX : hub.minX;
+      return { x, z: (rect.minZ + rect.maxZ) / 2, w: 1, d: rect.maxZ - rect.minZ };
+    }
+    const z = rect.minZ >= hub.maxZ ? hub.maxZ : hub.minZ;
+    return { x: (rect.minX + rect.maxX) / 2, z, w: rect.maxX - rect.minX, d: 1 };
+  });
+}
+
 // The shell of every bay, worked out from its rectangle and the corridor it
 // opens off: the far end, the near side cut either side of the mouth, the two
 // long sides and — for a bay that sits back — the pair of walls either side of
@@ -1205,11 +1286,7 @@ export function createWorld(scene) {
   });
 
   // ── hazard thresholds ─────────────────────────────────────
-  [
-    [0, -7, 5, 1],
-    [7, 0, 1, 5],
-    [-7, 0, 1, 5],
-  ].forEach(([x, z, w, d]) => {
+  hazardSpecs().forEach(({ x, z, w, d }) => {
     const mat = new THREE.MeshBasicMaterial({ map: hazardTex, transparent: true, opacity: 0.5, depthWrite: false, fog: true });
     const plane = new THREE.Mesh(new THREE.PlaneGeometry(w, d), mat);
     plane.rotation.x = -Math.PI / 2;
@@ -1224,23 +1301,12 @@ export function createWorld(scene) {
   const doorFrameMat = new THREE.MeshStandardMaterial({ color: 0x1b232d, roughness: 0.68, metalness: 0.52 });
   const doorGlowMat = new THREE.MeshBasicMaterial({ color: 0xff5a3c, transparent: true, opacity: 0.24, depthWrite: false, fog: true });
 
-  const DOORWAYS = [
-    { x: 0, z: -7, axis: 'z' },
-    { x: 0, z: -27, axis: 'z' },
-    { x: 0, z: 7, axis: 'z' },
-    { x: 0, z: 27, axis: 'z' },
-    { x: 7, z: 0, axis: 'x' },
-    { x: 27, z: 0, axis: 'x' },
-    { x: -7, z: 0, axis: 'x' },
-    { x: -27, z: 0, axis: 'x' },
-  ];
-
-  // The thresholds are drawn after the shift, so they sit at the new doors.
-  const doorSpecs = DOORWAYS.slice();
+  // Both ends of every corridor, read off the corridor rectangles.
+  const DOORWAYS = doorwaySpecs();
 
   structuralBuild = true;
-  doorSpecs.forEach((door) => {
-    const across = 2.5;
+  DOORWAYS.forEach((door) => {
+    const across = door.half;
     const post = 0.22;
     const head = 2.58;
     if (door.axis === 'z') {
@@ -1365,11 +1431,11 @@ export function createWorld(scene) {
   addFixture(-23, 0, 0x6fb6dd, 10, 11, 'z', 3.24, true);
   addFixture(0, 11, 0x7dc6ee, 10, 11, 'z', 3.24, true);
   addFixture(0, 23, 0x6fb6dd, 9, 11, 'z', 3.24, true);
-  addFixture(0, -26, 0xff6a32, 46, 24, 'z');
-  addFixture(26, -1.4, 0x7dffc4, 30, 20, 'x');
-  addFixture(-26, -0.6, 0x8fa9ff, 30, 20, 'x');
-  addFixture(0, 22.4, 0x9fe4ff, 30, 20, 'x');
-  addFixture(0, 31.6, 0x9fe4ff, 26, 18, 'x');
+  // Each bay's lamps, hung off its own middle. They are already at their final
+  // coordinates, so the bay shift leaves them where they are.
+  bayLampSpecs().forEach((lamp) => {
+    addFixture(lamp.x, lamp.z, lamp.color, lamp.intensity, lamp.distance, lamp.axis, 3.24, true);
+  });
 
   // ── reactor core ──────────────────────────────────────────
   const reactor = new THREE.Group();
