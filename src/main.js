@@ -349,6 +349,8 @@ const state = {
   ventEvent: null,
   ventLock: null,
   doorScare: null,
+  mirrorDone: false,
+  mirrorLock: null,
   ventHuntPending: 0,
   ventAmbient: 18,
   corridorRoom: null,
@@ -585,6 +587,82 @@ world.notes.forEach((note) => {
     onInteract: () => readCrewNote(note),
   });
 });
+
+// ─────────────────────────────────────────────────────────────
+// the head mirror
+//
+// One look, once a run. The glass is a shallow recess with something in it
+// that is only there while it is being looked at: look away, look back, and
+// the head is a head again.
+// ─────────────────────────────────────────────────────────────
+
+const MIRROR = world.mirror;
+
+function mirrorInView() {
+  if (!MIRROR) return false;
+
+  const dx = MIRROR.x - player.pos.x;
+  const dz = MIRROR.z - player.pos.z;
+  const dist = Math.hypot(dx, dz) || 1;
+  if (dist > 4.6) return false;
+
+  const forward = new THREE.Vector3();
+  camera.getWorldDirection(forward);
+  return (forward.x * dx + forward.z * dz) / dist > 0.6;
+}
+
+function beginMirrorScare() {
+  if (!MIRROR || state.mirrorDone) return;
+  if (state.phase !== 'day' || state.uiBlocking) return;
+
+  state.mirrorDone = true;
+  state.mirrorLock = { x: MIRROR.x, y: MIRROR.y, z: MIRROR.z, time: 2.4 };
+  state.shake = Math.max(state.shake, 0.5);
+
+  world.mirrorScare();
+  world.flicker(2.4);
+  audio.whisper();
+  audio.nightSting();
+
+  log('IT IS IN THE MIRROR. IT IS STANDING BEHIND YOU.', 'bad');
+
+  window.setTimeout(() => {
+    if (!state.started) return;
+    log('The glass is empty. There is nothing behind you. There never was.', 'ghostly');
+  }, 3300);
+}
+
+// Walking in and looking up is enough; the prompt is only a second way in.
+function updateMirror() {
+  if (!state.started || state.phase !== 'day' || state.uiBlocking || isPaused()) return;
+  if (state.mirrorDone || state.mirrorLock) return;
+  if (mirrorInView()) beginMirrorScare();
+}
+
+if (MIRROR) {
+  const group = new THREE.Group();
+  group.position.set(MIRROR.x, 0, MIRROR.z);
+
+  const hit = new THREE.Mesh(
+    new THREE.BoxGeometry(0.5, 1.5, 1.7),
+    new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false }),
+  );
+  hit.position.y = 1.55;
+  group.add(hit);
+
+  registerInteractable(group, {
+    room: 'head',
+    label: 'Look into the mirror',
+    onInteract: () => {
+      if (!state.mirrorDone) {
+        beginMirrorScare();
+      } else {
+        log('The mirror shows the room behind you. Nothing else.', 'ghostly');
+      }
+    },
+  });
+}
+
 // ─────────────────────────────────────────────────────────────
 // supply cabinets
 //
@@ -1623,6 +1701,7 @@ function startDay(savedTasks = null, options = {}) {
   state.ventEvent = null;
   state.ventPeek = null;
   state.corridorPeek = null;
+  state.mirrorLock = null;
   state.nextVentPeek = 20 + Math.random() * 14;
   state.nextCorridorPeek = 30 + Math.random() * 18;
   if (world.hidePeek) world.hidePeek();
@@ -2148,6 +2227,9 @@ function restart() {
   state.podBuilt = false;
   refreshEscapePod();
   state.lastPicks = {};
+  state.mirrorDone = false;
+  state.mirrorLock = null;
+  world.mirrorReset();
   setLife(100);
   respawnPlayer();
   startDay();
@@ -2196,6 +2278,9 @@ function startGame() {
   // once, on the way out.
   state.doorScare = { room: Math.random() < 0.5 ? 'cabinA' : 'cabinB', done: false };
   notesRead.clear();
+  state.mirrorDone = false;
+  state.mirrorLock = null;
+  world.mirrorReset();
   setLife(100);
   respawnPlayer();
   startDay();
@@ -2863,6 +2948,28 @@ function updateVentLock(dt) {
   player.pitchTarget = clamp(Math.atan2(dy, horiz), -1.2, 1.2);
 
   if (lock.time <= 0) state.ventLock = null;
+}
+
+// The mirror takes the helmet for a moment, the same way a vent does.
+function updateMirrorLock(dt) {
+  const lock = state.mirrorLock;
+  if (!lock) return;
+  if (state.phase !== 'day' || state.uiBlocking || isPaused()) return;
+
+  lock.time -= dt;
+
+  const dx = lock.x - camera.position.x;
+  const dz = lock.z - camera.position.z;
+  const dy = lock.y - camera.position.y;
+  const horiz = Math.hypot(dx, dz) || 1;
+
+  player.yawTarget = Math.atan2(-dx, -dz);
+  player.pitchTarget = clamp(Math.atan2(dy, horiz), -1.2, 1.2);
+
+  if (lock.time <= 0) {
+    state.mirrorLock = null;
+    world.mirrorClear();
+  }
 }
 
 function updateVentHazard(dt) {
@@ -4003,6 +4110,7 @@ function animate() {
     camera.rotation.set(0.015 * Math.sin(time * 0.2), Math.sin(time * 0.07) * 0.22, 0);
   } else {
     updateVentLock(dt);
+    updateMirrorLock(dt);
   updatePlayer(dt, time);
     updateShiftTimer(dt);
     updateEscape(dt);
@@ -4010,6 +4118,7 @@ function animate() {
     updateCorridors(dt);
     updateScurry(dt);
     updateVentHazard(dt);
+    updateMirror();
 
     // The hover raycast is the most expensive per-frame query; 16 Hz is
     // indistinguishable from every frame when the camera moves this slowly.

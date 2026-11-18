@@ -49,6 +49,10 @@ const BASE_LAYOUT = {
   // since the crew left; the notes on their desks are all that is left.
   cabinA: { minX: -9, maxX: -2.5, minZ: -12.6, maxZ: -8.4, label: 'CREW CABIN 4', accent: 0xc8a06a },
   cabinB: { minX: -9, maxX: -2.5, minZ: -25.8, maxZ: -21.6, label: 'CREW CABIN 7', accent: 0xc8a06a },
+  // A wet head off the south corridor: sink, mirror, one stall. The crew
+  // washed here between shifts, and the mirror over the sink has never
+  // shown the room back properly.
+  head: { minX: 2.5, maxX: 7.8, minZ: 8.2, maxZ: 13.4, label: 'HEAD / WASHROOM', accent: 0x9fb6c4 },
 };
 
 // Every bay is slid sideways off the end of its own corridor, by a different
@@ -334,17 +338,18 @@ const ROOM_BOXES = Object.entries(LAYOUT).map(([key, rect]) => {
   return rect;
 });
 
-// Cabin doorways need their own overlap: a strip narrow enough that only the
-// opening is passable, not the wall either side of it.
+// Doorways into the side rooms need their own overlap: a strip narrow enough
+// that only the opening is passable, not the wall either side of it.
 // The strip has to reach well past the wall on both sides: the walk test
 // insets every box by the player's radius, so two boxes that only touch leave
 // a gap twice that wide and the doorway becomes a wall.
-const CABIN_DOORS = [
-  { minX: -3.8, maxX: -1.6, minZ: -11.45, maxZ: -9.55 },
-  { minX: -3.8, maxX: -1.6, minZ: -24.65, maxZ: -22.75 },
+const SIDE_DOORS = [
+  { minX: -3.8, maxX: -1.6, minZ: -11.45, maxZ: -9.55 }, // cabin 4
+  { minX: -3.8, maxX: -1.6, minZ: -24.65, maxZ: -22.75 }, // cabin 7
+  { minX: 1.5, maxX: 3.6, minZ: 9.62, maxZ: 11.38 }, // head
 ];
 
-export const WALKABLE = [...ROOM_BOXES, ...CABIN_DOORS];
+export const WALKABLE = [...ROOM_BOXES, ...SIDE_DOORS];
 
 const WALL_H = 3.4;
 const WALL_T = 0.3;
@@ -488,6 +493,38 @@ export function makeScrawlTexture(lines, color = '#7996a6') {
     ctx.stroke();
   }
   ctx.globalAlpha = 1;
+
+  return canvasTexture(canvas);
+}
+
+// wet glass over a dark recess: the sheen of a ceiling fixture, and grime
+function makeMirrorTexture() {
+  const [canvas, ctx] = makeCanvas(256, 256);
+  const grad = ctx.createLinearGradient(0, 0, 0, 256);
+  grad.addColorStop(0, '#2b3a44');
+  grad.addColorStop(0.45, '#141d24');
+  grad.addColorStop(1, '#05080b');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, 256, 256);
+
+  ctx.save();
+  ctx.translate(128, 128);
+  ctx.rotate(-0.32);
+  const sheen = ctx.createLinearGradient(-120, 0, 120, 0);
+  sheen.addColorStop(0, 'rgba(190,220,235,0)');
+  sheen.addColorStop(0.5, 'rgba(190,220,235,0.18)');
+  sheen.addColorStop(1, 'rgba(190,220,235,0)');
+  ctx.fillStyle = sheen;
+  ctx.fillRect(-130, -46, 260, 26);
+  ctx.fillRect(-130, 34, 260, 8);
+  ctx.restore();
+
+  for (let i = 0; i < 90; i += 1) {
+    ctx.fillStyle = `rgba(190,210,220,${Math.random() * 0.05})`;
+    ctx.beginPath();
+    ctx.arc(Math.random() * 256, Math.random() * 256, Math.random() * 2.2, 0, Math.PI * 2);
+    ctx.fill();
+  }
 
   return canvasTexture(canvas);
 }
@@ -1037,6 +1074,8 @@ export function createWorld(scene) {
 
   const floorTex = makeFloorTexture();
   const hazardTex = makeHazardTexture();
+  const bloodTex = makeBloodTexture();
+  const mirrorTex = makeMirrorTexture();
 
   const lightEntries = [];
   const fixtures = [];
@@ -1274,9 +1313,18 @@ export function createWorld(scene) {
   corridorWallAtZ(-2.5, -27, -7, 0x3f8499);
   corridorWallAtZ(2.5, -27, -7, 0x3f8499);
 
-  // south corridor + escape bay
+  // south corridor + escape bay. The east wall carries the head doorway, so
+  // it is built around the opening instead of as one run with a window in it.
   corridorWallAtX(-2.5, 7, 27, 0x3f8499);
-  corridorWallAtX(2.5, 7, 27, 0x3f8499);
+  [[7, 9.55], [11.45, 15.3], [18.7, 27]].forEach(([a, b]) => addWallX(2.5, a, b, 0x3f8499));
+  {
+    const wasStructural = structuralBuild;
+    structuralBuild = true;
+    addBox(WALL_T, 1.02, 3.4, 2.5, 0.51, 17, wallMat);
+    addBox(WALL_T, WALL_H - 2.42, 3.4, 2.5, (2.42 + WALL_H) / 2, 17, wallMat);
+    structuralBuild = wasStructural;
+  }
+  windowSpecs.push({ axis: 'x', x: 2.5, z: 17, face: -1, width: 3.4 });
   // ── bay walls ─────────────────────────────────────────────
   // Read out of the bay rectangles, so a bay that moves takes its shell and its
   // duct with it.
@@ -1647,6 +1695,18 @@ export function createWorld(scene) {
   const noteMat = new THREE.MeshBasicMaterial({ color: 0xd8c9a6, transparent: true, opacity: 0.92, fog: true });
   const notes = [];
 
+  // A page can be taped up or lying flat, in any room. The cabins use it from
+  // buildCabin; everything else calls it with coordinates already final.
+  const addPaper = (roomId, spec) => {
+    const paper = new THREE.Mesh(new THREE.PlaneGeometry(0.34, 0.44), noteMat);
+    paper.position.set(spec.x, spec.y, spec.z);
+    paper.rotation.y = spec.ry || 0;
+    if (spec.flat) paper.rotation.x = -Math.PI / 2;
+    paper.userData.structural = true;
+    root.add(paper);
+    notes.push({ ...spec, room: roomId });
+  };
+
   const buildCabin = (roomId, z0, z1, noteSpecs) => {
     const wasStructural = structuralBuild;
     structuralBuild = true;
@@ -1707,16 +1767,7 @@ export function createWorld(scene) {
     ring.userData.structural = true;
     root.add(ring);
 
-    noteSpecs.forEach((spec) => {
-      const paper = new THREE.Mesh(new THREE.PlaneGeometry(0.34, 0.44), noteMat);
-      paper.position.set(spec.x, spec.y, spec.z);
-      paper.rotation.y = spec.ry || 0;
-      if (spec.flat) paper.rotation.x = -Math.PI / 2;
-      paper.userData.structural = true;
-      root.add(paper);
-
-      notes.push({ ...spec, room: roomId });
-    });
+    noteSpecs.forEach((spec) => addPaper(roomId, spec));
 
     structuralBuild = wasStructural;
   };
@@ -2027,6 +2078,382 @@ export function createWorld(scene) {
     root.add(stainMesh);
   });
 
+  // ── what is left of the crew ──────────────────────────────
+  // Nobody was buried. The thing did not finish every meal in the room where
+  // it started one: there is a ribcage in the reactor, a hand in Hydro, boots
+  // in the west link, and blood in every corridor between them.
+  const boneMat = new THREE.MeshStandardMaterial({ color: 0x9a8b74, roughness: 0.92, metalness: 0.03 });
+  const boneDarkMat = new THREE.MeshStandardMaterial({ color: 0x5f5546, roughness: 0.95, metalness: 0.03 });
+  const suitMat = new THREE.MeshStandardMaterial({ color: 0x22282e, roughness: 0.95, metalness: 0.06 });
+  const visorGlassMat = new THREE.MeshBasicMaterial({ color: 0x0a1116, fog: true });
+
+  const remnants = new THREE.Group();
+  remnants.userData.structural = true;
+  root.add(remnants);
+
+  const bloodDecal = () => new THREE.MeshBasicMaterial({
+    map: bloodTex,
+    transparent: true,
+    opacity: 0.5,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+    fog: true,
+  });
+
+  const addBlood = (x, z, w, d, ry = 0, opacity = 0.5) => {
+    const mat = bloodDecal();
+    mat.opacity = opacity;
+    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, d), mat);
+    mesh.rotation.set(-Math.PI / 2, 0, ry);
+    mesh.position.set(x, 0.016, z);
+    remnants.add(mesh);
+    return mesh;
+  };
+
+  // A kill scene, reduced to the parts it left behind: bone, a suit that is
+  // still zipped, and a lot of dark. A whole body would read as a prop; this
+  // reads as a meal.
+  const remainsAt = (kind, x, z, ry = 0) => {
+    const group = new THREE.Group();
+    group.position.set(x, 0, z);
+    group.rotation.y = ry;
+    remnants.add(group);
+
+    const part = (geometry, material, px, py, pz, rx = 0, ry2 = 0, rz = 0) => {
+      const mesh = new THREE.Mesh(geometry, material);
+      mesh.position.set(px, py, pz);
+      mesh.rotation.set(rx, ry2, rz);
+      group.add(mesh);
+      return mesh;
+    };
+
+    const limb = (ax, ay, az, bx, by, bz, r = 0.032, material = boneMat) => {
+      const from = new THREE.Vector3(ax, ay, az);
+      const to = new THREE.Vector3(bx, by, bz);
+      const mesh = new THREE.Mesh(new THREE.CylinderGeometry(r, r * 0.78, 1, 6), material);
+      mesh.position.copy(from).lerp(to, 0.5);
+      mesh.scale.y = from.distanceTo(to);
+      mesh.quaternion.setFromUnitVectors(CREATURE_UP, new THREE.Vector3().subVectors(to, from).normalize());
+      group.add(mesh);
+      return mesh;
+    };
+
+    if (kind === 'ribcage') {
+      addBlood(x, z, 1.9, 1.4, ry, 0.6);
+      for (let i = 0; i < 5; i += 1) {
+        const rib = part(
+          new THREE.TorusGeometry(0.27 - i * 0.012, 0.024, 5, 9, Math.PI * 0.92),
+          boneMat,
+          0, 0.09, -0.34 + i * 0.16,
+          0.1, Math.PI / 2, 0,
+        );
+        rib.scale.set(1, 0.72, 1);
+      }
+      for (let i = 0; i < 6; i += 1) {
+        part(new THREE.SphereGeometry(0.042, 7, 5), boneDarkMat, 0, 0.06, -0.42 + i * 0.16);
+      }
+      part(new THREE.TorusGeometry(0.16, 0.035, 5, 9, Math.PI * 1.1), boneMat, 0, 0.07, 0.48, 0.2, Math.PI / 2, 0);
+      return group;
+    }
+
+    if (kind === 'helmet') {
+      addBlood(x, z, 1.15, 0.95, ry, 0.5);
+      part(new THREE.SphereGeometry(0.21, 14, 10), suitMat, 0, 0.16, 0).scale.set(1, 0.88, 1.05);
+      part(new THREE.PlaneGeometry(0.26, 0.17), visorGlassMat, 0, 0.17, 0.2, -0.35, 0, 0);
+      part(new THREE.BoxGeometry(0.14, 0.05, 0.1), boneMat, 0.02, 0.06, 0.24, 0, 0.3, 0);
+      for (let i = 0; i < 3; i += 1) {
+        part(new THREE.ConeGeometry(0.014, 0.06, 5), boneMat, -0.03 + i * 0.035, 0.07, 0.3, -1.2, 0, 0);
+      }
+      return group;
+    }
+
+    if (kind === 'boots') {
+      addBlood(x, z, 1.3, 0.95, ry, 0.45);
+      [-0.16, 0.16].forEach((dx, i) => {
+        part(new THREE.BoxGeometry(0.17, 0.15, 0.36), suitMat, dx, 0.085, i * 0.08, 0, i ? 0.18 : -0.12, 0);
+        part(new THREE.BoxGeometry(0.18, 0.04, 0.38), boneDarkMat, dx, 0.022, i * 0.08, 0, i ? 0.18 : -0.12, 0);
+      });
+      limb(0.16, 0.16, 0.14, 0.44, 0.03, 0.36, 0.032);
+      return group;
+    }
+
+    // a gloved hand, cut off at the wrist
+    addBlood(x, z, 1.1, 1.0, ry, 0.48);
+    part(new THREE.BoxGeometry(0.1, 0.035, 0.13), suitMat, 0, 0.025, 0, 0, 0.2, 0);
+    for (let i = 0; i < 4; i += 1) {
+      limb(-0.035 + i * 0.025, 0.02, 0.06, -0.05 + i * 0.03, 0.02, 0.21, 0.011, suitMat);
+    }
+    limb(0.05, 0.02, 0.01, 0.14, 0.02, -0.05, 0.012, suitMat);
+    limb(-0.02, 0.03, -0.05, -0.02, 0.03, -0.17, 0.026, boneMat);
+    return group;
+  };
+
+  // hub: a drag mark going the wrong way, and the boots that made it
+  remainsAt('boots', 3.25, 1.5, 0.4);
+  addBlood(2.4, 0.0, 2.6, 4.6, 0.12, 0.4);
+  const crewTag = new THREE.Mesh(
+    new THREE.PlaneGeometry(0.14, 0.09),
+    new THREE.MeshBasicMaterial({ color: 0xd8d2c2, fog: true }),
+  );
+  crewTag.rotation.set(-Math.PI / 2, 0, 0.6);
+  crewTag.position.set(3.55, 0.02, 1.3);
+  remnants.add(crewTag);
+
+  // corridors
+  remainsAt('hand', 1.35, -14.6, -0.5);
+  addBlood(0.7, -16.2, 0.9, 2.4, 0.1, 0.33);
+  remainsAt('helmet', 13.2, 1.15, 1.2);
+  remainsAt('boots', -14.9, -1.15, -0.3);
+  remainsAt('hand', 0.9, 16.2, 2.2);
+  addBlood(1.35, 11.4, 1.1, 3.2, 0.25, 0.38); // dragged toward the head door
+
+  // bays
+  remainsAt('ribcage', 12.2, -31.4, 0.7);
+  remainsAt('helmet', 0.6, -29.4, -1.1);
+  remainsAt('hand', 36.8, 10.4, 1.6);
+  addBlood(35.6, 9.6, 1.3, 1.6, 0.4, 0.42);
+  remainsAt('boots', -33.1, 3.9, 2.5);
+  remainsAt('helmet', -42.6, -8.4, 0.3);
+  remainsAt('ribcage', 6.6, 38.4, 0.2);
+  addBlood(5.4, 37.6, 2.2, 2.0, 0.3, 0.5);
+
+  // cabins: the bunks were never changed after the last night
+  addBlood(-6.2, -11.5, 1.6, 1.3, 0.2, 0.4);
+  addBlood(-6.3, -24.9, 1.5, 1.2, -0.3, 0.35);
+
+  // ── more of the crew's paper ──────────────────────────────
+  addPaper('hub', {
+    id: 'hub-slate',
+    title: 'Berth slate',
+    x: 5.7, y: 0.99, z: -3.05, flat: true, ry: 0.15,
+    body: [
+      'Day 61. The roster says nine of us. Six came to mess, and Halden counted five, and nobody wanted to be the one who wrote the number down.',
+      'Command filed the extra pod as a clerical error. There is a tenth berth on this ship that nobody signed for, and something in it has been awake since the Vesta run.',
+      'We are not missing. We are being eaten, one shift at a time, and the thing that is doing it keeps the manifest tidy.',
+    ],
+  });
+
+  addPaper('reactor', {
+    id: 'reactor-log',
+    title: 'Watch log — reactor',
+    x: LAYOUT.reactor.minX + 2.8, y: 0.03, z: LAYOUT.reactor.maxZ - 3.2, flat: true, ry: -0.4,
+    body: [
+      'The coolant line came back with something in it. We pulled four metres of it out and the rest of it pulled back.',
+      'Halden is gone. We found his suit in the sump, zipped, and nothing inside it but wet.',
+      'It does not eat where it kills. It takes what it wants down into the dark and comes back for the rest. There is always a rest.',
+    ],
+  });
+
+  addPaper('med', {
+    id: 'hydro-tag',
+    title: 'Sample tag — Hydro',
+    x: LAYOUT.med.minX + 2.8, y: 0.03, z: LAYOUT.med.maxZ - 1.8, flat: true, ry: 0.9,
+    body: [
+      'Specimen 14: human tissue, adult, no matching crew file. Specimen 19: human tissue, adult, matches Halden Voss.',
+      'The filter is full again. Every morning there is more of us in it than there was the night before, and the drain is on the other side of the bulkhead.',
+      'I have stopped weighing the samples. Whatever it is, it is eating the crew and keeping the parts it has no use for.',
+    ],
+  });
+
+  addPaper('nav', {
+    id: 'nav-fragment',
+    title: 'Transmission fragment',
+    x: LAYOUT.nav.minX + 2.4, y: 0.03, z: 0.6, flat: true, ry: 0.25,
+    body: [
+      'ERebus-9 to any receiver. Nine aboard. Six accounted for. We are not under attack. It is not an attack. It is a meal, and we are the stores.',
+      'It called the bridge in Voss\u2019s voice and asked us to open the inner door. We opened it. I am sorry. I am so sorry.',
+      'The count is five now. Then four. It is not in a hurry. It has all the time the hull has.',
+    ],
+  });
+
+  addPaper('escape', {
+    id: 'escape-entry',
+    title: 'Pod bay, final entry',
+    x: LAYOUT.escape.minX + 3.0, y: 0.03, z: LAYOUT.escape.maxZ - 2.2, flat: true, ry: -0.2,
+    body: [
+      'The pod is built. We are not going. It is in the bay with us, between the pod and the door, and it has been there since the lights went out.',
+      'It ate Orlova while she was strapping in. It did not hurry. It took the launch key out of her hand afterwards and it has not put it down.',
+      'If you finish the pod, launch it before it finishes you. Do not go looking for the others. There are no others. There is only what is left of them.',
+    ],
+  });
+
+  const escapeScrawl = new THREE.Mesh(
+    new THREE.PlaneGeometry(2.6, 1.7),
+    new THREE.MeshBasicMaterial({ map: makeScrawlTexture(['THE POD', 'WAS NEVER', 'FOR US'], '#8fb0c4'), transparent: true, opacity: 0.45, depthWrite: false }),
+  );
+  escapeScrawl.position.set(4.0, 1.86, LAYOUT.escape.maxZ - 0.18);
+  escapeScrawl.rotation.y = Math.PI;
+  escapeScrawl.userData.structural = true;
+  root.add(escapeScrawl);
+
+  // ── head / washroom ───────────────────────────────────────
+  // A small wet room off the south corridor. The crew washed here between
+  // shifts; the sink is still full, and the mirror over it has never shown
+  // the room back.
+  const headRect = LAYOUT.head;
+  const headMat = new THREE.MeshStandardMaterial({ color: 0x2c343b, roughness: 0.6, metalness: 0.45 });
+  const headTrimMat = new THREE.MeshStandardMaterial({ color: 0x1a2229, roughness: 0.5, metalness: 0.65 });
+  const porcelainMat = new THREE.MeshStandardMaterial({ color: 0x9aa3a6, roughness: 0.42, metalness: 0.18 });
+
+  const headRoom = new THREE.Group();
+  headRoom.userData.structural = true;
+  root.add(headRoom);
+
+  const HEAD_MIRROR = { x: headRect.maxX + 0.06, y: 1.55, z: 11.35 };
+
+  structuralBuild = true;
+
+  [-1, 1].forEach((side) => {
+    addBox(0.36, 2.5, 0.14, headRect.minX, 1.25, 10.5 + side * 1.02, headMat, headRoom);
+  });
+  addBox(0.36, 0.18, 2.06, headRect.minX, 2.59, 10.5, headMat, headRoom);
+
+  addWallZ(headRect.minZ, headRect.minX, headRect.maxX, headRect.accent);
+  addWallZ(headRect.maxZ, headRect.minX, headRect.maxX, headRect.accent);
+  addWallX(headRect.maxX, headRect.minZ, 10.6, headRect.accent);
+  addWallX(headRect.maxX, 12.1, headRect.maxZ, headRect.accent);
+  addBox(WALL_T, 0.95, 1.5, headRect.maxX, 0.475, 11.35, wallMat);
+  addBox(WALL_T, WALL_H - 2.15, 1.5, headRect.maxX, (2.15 + WALL_H) / 2, 11.35, wallMat);
+
+  // the recess the glass looks into. It is shallow, dark and empty, except
+  // for the half-second when you are looking at it.
+  const recessMat = new THREE.MeshStandardMaterial({ color: 0x05080a, roughness: 0.9, metalness: 0.2 });
+  addBox(0.08, 1.2, 1.5, 8.84, 1.55, 11.35, recessMat, headRoom);
+  addBox(0.94, 0.08, 1.5, 8.37, 0.95, 11.35, recessMat, headRoom);
+  addBox(0.94, 0.08, 1.5, 8.37, 2.15, 11.35, recessMat, headRoom);
+  addBox(0.94, 1.2, 0.08, 8.37, 1.55, 10.6, recessMat, headRoom);
+  addBox(0.94, 1.2, 0.08, 8.37, 1.55, 12.1, recessMat, headRoom);
+
+  const mirrorFrameMat = new THREE.MeshStandardMaterial({ color: 0x3d474d, roughness: 0.35, metalness: 0.85 });
+  addBox(0.1, 0.09, 1.66, 7.87, 2.2, 11.35, mirrorFrameMat, headRoom);
+  addBox(0.1, 0.09, 1.66, 7.87, 0.9, 11.35, mirrorFrameMat, headRoom);
+  addBox(0.1, 1.39, 0.09, 7.87, 1.55, 10.58, mirrorFrameMat, headRoom);
+  addBox(0.1, 1.39, 0.09, 7.87, 1.55, 12.12, mirrorFrameMat, headRoom);
+
+  const mirrorGlass = new THREE.Mesh(
+    new THREE.PlaneGeometry(1.5, 1.2),
+    new THREE.MeshBasicMaterial({ map: mirrorTex, transparent: true, opacity: 0.58, depthWrite: false, fog: true }),
+  );
+  mirrorGlass.rotation.y = -Math.PI / 2;
+  mirrorGlass.position.set(HEAD_MIRROR.x, HEAD_MIRROR.y, HEAD_MIRROR.z);
+  headRoom.add(mirrorGlass);
+
+  // it is already in there, facing out; it only needs to be looked at
+  const mirrorThing = buildCreature({ fade: true });
+  mirrorThing.group.scale.setScalar(1.18);
+  mirrorThing.group.position.set(8.38, 1.62 - CREATURE_HEAD_Y * 1.18, HEAD_MIRROR.z);
+  mirrorThing.group.rotation.y = -Math.PI / 2;
+  mirrorThing.group.visible = false;
+  mirrorThing.setOpacity(0);
+  mirrorThing.setEyeGlow(0);
+  headRoom.add(mirrorThing.group);
+
+  // The glass only shows the head, the chest and the top of the arms; the
+  // rest sits behind the sink, where it would only poke through the wall.
+  mirrorThing.group.updateMatrixWorld(true);
+  const creatureY = new THREE.Vector3();
+  const creatureBaseY = mirrorThing.group.getWorldPosition(new THREE.Vector3()).y;
+  mirrorThing.group.traverse((child) => {
+    if (!child.isMesh) return;
+    child.getWorldPosition(creatureY);
+    if ((creatureY.y - creatureBaseY) / 1.18 < 1.02) child.visible = false;
+  });
+
+  addBox(0.62, 0.84, 2.0, 7.31, 0.42, 11.35, headMat, headRoom);
+  addBox(0.66, 0.06, 2.06, 7.31, 0.87, 11.35, headTrimMat, headRoom);
+
+  const basin = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.19, 0.15, 14, 1, true), porcelainMat);
+  basin.position.set(7.28, 0.9, 11.35);
+  headRoom.add(basin);
+
+  const tap = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.3, 6), headTrimMat);
+  tap.position.set(7.56, 1.0, 11.35);
+  tap.rotation.z = 0.55;
+  headRoom.add(tap);
+
+  const handprint = new THREE.Mesh(new THREE.PlaneGeometry(0.34, 0.38), bloodDecal());
+  handprint.material.opacity = 0.55;
+  handprint.rotation.y = -Math.PI / 2;
+  handprint.position.set(HEAD_MIRROR.x - 0.02, 1.7, 11.95);
+  headRoom.add(handprint);
+
+  const sinkBlood = new THREE.Mesh(new THREE.PlaneGeometry(0.4, 0.3), bloodDecal());
+  sinkBlood.material.opacity = 0.75;
+  sinkBlood.rotation.x = -Math.PI / 2;
+  sinkBlood.position.set(7.28, 0.93, 11.35);
+  headRoom.add(sinkBlood);
+
+  addBox(0.48, 0.36, 0.62, 4.0, 0.18, 8.68, porcelainMat, headRoom);
+  addBox(0.46, 0.05, 0.58, 4.0, 0.39, 8.66, headTrimMat, headRoom);
+  addBox(0.46, 0.5, 0.2, 4.0, 0.65, 8.48, porcelainMat, headRoom);
+
+  addBox(0.14, 1.0, 0.14, 3.2, 2.55, 13.12, pipeMat, headRoom);
+  const showerHead = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.1, 0.05, 12), headTrimMat);
+  showerHead.position.set(3.2, 2.06, 12.96);
+  showerHead.rotation.x = 0.4;
+  headRoom.add(showerHead);
+  addBox(0.55, 0.02, 0.55, 3.2, 0.02, 12.7, grateMat, headRoom);
+  addBlood(4.15, 12.2, 1.0, 0.9, 0.6, 0.4);
+
+  addBox(1.1, 0.07, 0.4, 5.0, 0.82, 9.0, headTrimMat, headRoom);
+  addBox(0.08, 0.8, 0.36, 4.5, 0.42, 9.0, headMat, headRoom);
+
+  const loosTooth = new THREE.Mesh(CREATURE_GEO.tooth, boneMat);
+  loosTooth.position.set(6.35, 0.035, 12.75);
+  loosTooth.rotation.set(Math.PI / 2, 0.4, 0.2);
+  headRoom.add(loosTooth);
+
+  structuralBuild = false;
+  addFixture(5.1, 10.7, 0xcfdfe2, 13, 8, 'z', 3.24, true);
+
+  addPaper('head', {
+    id: 'head-mirror',
+    title: 'Taped to the mirror',
+    x: headRect.maxX - 0.18, y: 1.52, z: 12.7, ry: -Math.PI / 2,
+    body: [
+      'Do not look up when you wash your hands. It stands behind you in the glass, and it is closer every time.',
+      'It only moves in the mirror. Look away and it is gone, which is worse, because gone is where it waits.',
+      'If you see it, do not turn around. Walk backwards out of the head and keep your eyes on the glass until the door is shut.',
+    ],
+  });
+
+  const headScrawl = new THREE.Mesh(
+    new THREE.PlaneGeometry(2.4, 1.5),
+    new THREE.MeshBasicMaterial({ map: makeScrawlTexture(['IT ATE', 'THE CREW'], '#c08a6a'), transparent: true, opacity: 0.5, depthWrite: false }),
+  );
+  headScrawl.position.set(5.2, 1.86, headRect.maxZ - 0.18);
+  headScrawl.rotation.y = Math.PI;
+  headScrawl.userData.structural = true;
+  root.add(headScrawl);
+
+  // The reflection only exists between one look and the next. After the glass
+  // is empty it stays empty for the rest of the run.
+  let mirrorMode = 'idle';
+  let mirrorLife = 0;
+  let mirrorFade = 0;
+
+  function mirrorScare() {
+    mirrorMode = 'rising';
+    mirrorLife = 0;
+    mirrorFade = 0;
+    mirrorThing.group.visible = true;
+    mirrorThing.setOpacity(0);
+    mirrorThing.setEyeGlow(0);
+  }
+
+  function mirrorClear() {
+    if (mirrorMode === 'rising' || mirrorMode === 'holding') mirrorMode = 'dropping';
+  }
+
+  function mirrorReset() {
+    mirrorMode = 'idle';
+    mirrorLife = 0;
+    mirrorFade = 0;
+    mirrorThing.group.visible = false;
+    mirrorThing.setOpacity(0);
+    mirrorThing.setEyeGlow(0);
+  }
+
   // ── hull damage, vents and the thing in the dark ──────────
   const crackTex = makeCrackTexture();
   const weldTex = makeWeldTexture();
@@ -2148,7 +2575,6 @@ export function createWorld(scene) {
     };
   });
 
-  const bloodTex = makeBloodTexture();
   const bloodMats = [];
   const bloodSpecs = [
     { x: 4.3, y: 1.8, z: -6.82, ry: 0 },
@@ -2514,6 +2940,31 @@ export function createWorld(scene) {
 
     if (scareGroup.visible) {
       scareCreature.setEyeGlow(0.75 + Math.sin(elapsed * 22) * 0.25);
+    }
+
+    // The thing in the mirror is only there while it is being looked at.
+    if (mirrorMode !== 'idle') {
+      mirrorLife += dt;
+      if (mirrorMode === 'rising') {
+        mirrorFade = Math.min(1, mirrorFade + dt / 0.5);
+        if (mirrorFade >= 1) mirrorMode = 'holding';
+      } else if (mirrorMode === 'holding') {
+        mirrorFade = Math.min(1, mirrorFade + dt * 0.4);
+        if (mirrorLife > 2.7) mirrorMode = 'dropping';
+      } else if (mirrorMode === 'dropping') {
+        mirrorFade = Math.max(0, mirrorFade - dt / 0.4);
+        if (mirrorFade <= 0) {
+          mirrorMode = 'idle';
+          mirrorThing.group.visible = false;
+        }
+      }
+
+      mirrorThing.setOpacity(mirrorFade);
+      mirrorThing.setEyeGlow(mirrorFade * (0.7 + Math.sin(elapsed * 19) * 0.3));
+      mirrorThing.jaw.rotation.x = 0.08 + mirrorFade * 0.55;
+      mirrorThing.head.rotation.z = 0.03 + Math.sin(elapsed * 9) * 0.05;
+      mirrorThing.head.rotation.y = Math.sin(elapsed * 7) * 0.06;
+      mirrorThing.group.position.x = 8.38 - mirrorFade * 0.12 + Math.sin(elapsed * 15) * 0.01;
     }
 
     // dust drifts and recycles around the camera
@@ -3152,6 +3603,10 @@ export function createWorld(scene) {
     flicker,
     notes,
     cabinets,
+    mirror: { x: HEAD_MIRROR.x, y: HEAD_MIRROR.y, z: HEAD_MIRROR.z },
+    mirrorScare,
+    mirrorClear,
+    mirrorReset,
     doorPeek,
     showGhost,
     showWatcher,
